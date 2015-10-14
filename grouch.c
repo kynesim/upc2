@@ -1,9 +1,13 @@
 /* grouch.c */
 /* (C) Kynesim Ltd 2015 */
 
-static int grouch(upc_context_t *upc, up_load_arg_t *arg);
+#include "up.h"
+#include "utils.h"
+#include 
 
-static int grouch(upc_context_t *upc, up_load_arg_t *arg) {
+static int grouch(up_context_t *upc, up_load_arg_t *arg);
+
+static int grouch(up_context_t *upc, up_load_arg_t *arg) {
     off_t len;
     uint8_t buf[4096];
     int in_buf = 0;
@@ -31,12 +35,12 @@ static int grouch(upc_context_t *upc, up_load_arg_t *arg) {
     while (!done || in_buf)
     {
         int rv;
-        if (up_internal_check_control(upc) < 0) { return -2; }
+        if (utils_check_critical_control(up) < 0) { return -2; }
 
-        rv = up_portc_read(upc, &buf[in_buf], 4096-in_buf);
+        rv = upc->bio->read(up->bio, &buf[in_buf], 4096-in_buf);
         if (rv > 0)
         {
-            up_internal_safe_write(upc->ttyfd, &buf[in_buf], rv);
+            utils_safe_write(upc->ttyfd, &buf[in_buf], rv);
         }
             
             
@@ -68,7 +72,7 @@ static int grouch(upc_context_t *upc, up_load_arg_t *arg) {
                     buf[in_buf+2] = (sum >> 8) & 0xff;        
                     buf[in_buf+3] = (sum >> 0) & 0xff;        
                     in_buf += 4;
-                    printf("<host> sum = 0x%08x \n", sum);
+                    printf("! grouch complete: host sum = 0x%08x \n", sum);
                     wrote_sum = 1;
                 }
             }
@@ -84,7 +88,7 @@ static int grouch(upc_context_t *upc, up_load_arg_t *arg) {
             in_buf += rv;
         }
         // Now write to the output .. 
-        rv = up_portc_write(upc, buf, in_buf);
+        rv = upc->bio->safe_write(up->bio, buf, in_buf);
         // printf("<host> wrote %d / %d\n", rv, in_buf);
         if (rv >= 0)
         {

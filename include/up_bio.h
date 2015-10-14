@@ -10,12 +10,15 @@ typedef struct up_bio_struct {
     /** Retrieve an fd you can poll() on */
     int (*poll_fd)(up_bio_t *bio);
 
-    /** read() */
+    /** read(), non-blocking */
     int (*read)(up_bio_t *bio, uint8_t *bytes, int nr);
 
-    /** write() */
+    /** write(), non-blocking */
     int (*write)(up_bio_t *bio, const uint8_t *bytes, int nr);
    
+    /** write(), blocking */
+    int (*safe_write)(up_bio_t *bio, const uint8_t *bytes, int nr);
+
     /** set baud rate */
     void (*set_baud)(up_bio_t *bio, int baud);
 

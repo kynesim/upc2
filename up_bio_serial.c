@@ -34,6 +34,11 @@ static int up_bio_serial_write(up_bio_t *bio, const uint8_t *bytes, int nr) {
     return write(bio->serial_fd, bytes, nr);
 }
 
+static int up_bio_serial_safe_write(up_bio_t *bio, const uint8_t *bytes, int nr) { 
+    SERIAL_CTX(ctx, bio);
+    utils_bio_safe_write(bio, bytes, nr);
+}
+
 
 static void up_bio_serial_dispose(up_bio_t *bio) { 
     SERIAL_CTX(ctx, bio);
