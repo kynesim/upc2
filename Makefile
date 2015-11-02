@@ -4,7 +4,7 @@ DESTDIR ?= $(shell pwd)
 BINDIR := $(DESTDIR)/bin
 OBJDIR := $(DESTDIR)/obj
 
-CFLAGS := 
+CFLAGS := -Iinclude
 LDFLAGS := 
 LIBS := 
 
