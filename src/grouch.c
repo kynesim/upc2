@@ -1,11 +1,19 @@
 /* grouch.c */
 /* (C) Kynesim Ltd 2015 */
 
-#include "up.h"
-#include "utils.h"
-#include 
+#include <stdio.h>
+#include <stdint.h>
+#include <string.h>
+#include <errno.h>
+#include <sys/types.h>
+#include <unistd.h>
 
-static int grouch(up_context_t *upc, up_load_arg_t *arg);
+#include "upc2/grouch.h"
+#include "upc2/up.h"
+#include "upc2/utils.h"
+
+#define NAME_MAYBE_NULL(n) (((n) == NULL) ? "(no file name)" : (n))
+
 
 static int grouch(up_context_t *upc, up_load_arg_t *arg) {
     off_t len;
@@ -16,13 +24,13 @@ static int grouch(up_context_t *upc, up_load_arg_t *arg) {
     len = lseek(arg->fd, 0, SEEK_END);
     if (len == (off_t)-1)
     {
-        fprintf(stderr, "Cannot lseek() %s - %s [%d] \n", 
+        fprintf(stderr, "Cannot lseek() %s: %s [%d] \n",
                 NAME_MAYBE_NULL(arg->file_name),
                 strerror(errno), errno);
         return -1;
     }
     lseek(arg->fd, 0, SEEK_SET);
-   
+
     uint32_t sum = 0, wrote_sum = 0;
     // Preload the buffer with the length, BE.
     buf[0] = '*'; // Synchronisation.
@@ -31,28 +39,29 @@ static int grouch(up_context_t *upc, up_load_arg_t *arg) {
     buf[3] = (len >> 8) & 0xff;
     buf[4] = (len & 0xff);
     in_buf = 5;
-    
+
     while (!done || in_buf)
     {
         int rv;
-        if (utils_check_critical_control(up) < 0) { return -2; }
+        if (utils_check_critical_control(upc) < 0) { return -2; }
 
-        rv = upc->bio->read(up->bio, &buf[in_buf], 4096-in_buf);
+        rv = upc->bio->read(upc->bio, &buf[in_buf], 4096-in_buf);
         if (rv > 0)
         {
             utils_safe_write(upc->ttyfd, &buf[in_buf], rv);
         }
-            
-            
+
         rv = read(arg->fd, &buf[in_buf], 4096-in_buf);
-        if (rv < 0) 
+        if (rv < 0)
         {
             if (!(errno == EINTR || errno == EAGAIN))
             {
-                fprintf(stderr, "Error reading grouch file %s - %s [%d] \n", 
-                        NAME_MAYBE_NULL(arg->file_name), strerror(errno), errno);
-                /** @todo Should stuff the rest of the file and send a deliberately incorrect
-                 *   checksum to force restart.
+                fprintf(stderr,
+                        "Error reading grouch file %s:  %s [%d] \n",
+                        NAME_MAYBE_NULL(arg->file_name),
+                        strerror(errno), errno);
+                /** @todo Should stuff the rest of the file and send a
+                 *   deliberately incorrect checksum to force restart.
                  */
                 return -1;
             }
@@ -67,10 +76,10 @@ static int grouch(up_context_t *upc, up_load_arg_t *arg) {
             {
                 if (in_buf < (4096 - 4))
                 {
-                    buf[in_buf] = (sum >> 24) & 0xff;        
-                    buf[in_buf+1] = (sum >> 16) & 0xff;        
-                    buf[in_buf+2] = (sum >> 8) & 0xff;        
-                    buf[in_buf+3] = (sum >> 0) & 0xff;        
+                    buf[in_buf] = (sum >> 24) & 0xff;
+                    buf[in_buf+1] = (sum >> 16) & 0xff;
+                    buf[in_buf+2] = (sum >> 8) & 0xff;
+                    buf[in_buf+3] = (sum >> 0) & 0xff;
                     in_buf += 4;
                     printf("! grouch complete: host sum = 0x%08x \n", sum);
                     wrote_sum = 1;
@@ -87,8 +96,8 @@ static int grouch(up_context_t *upc, up_load_arg_t *arg) {
             }
             in_buf += rv;
         }
-        // Now write to the output .. 
-        rv = upc->bio->safe_write(up->bio, buf, in_buf);
+        // Now write to the output ...
+        rv = upc->bio->safe_write(upc->bio, buf, in_buf);
         // printf("<host> wrote %d / %d\n", rv, in_buf);
         if (rv >= 0)
         {
@@ -101,18 +110,22 @@ static int grouch(up_context_t *upc, up_load_arg_t *arg) {
     return 0;
 }
 
-static int maybe_grouch(up_context_t *ctx, up_load_arg_t *arg, const uint8_t *buf, int rv)
+
+int maybe_grouch(up_context_t  *ctx,
+                 up_load_arg_t *arg,
+                 const uint8_t *buf,
+                 int            rv)
 {
     static const char *cue = "*LOAD*";
     static const int cuelen = 6;
     int x;
-    for (x =0 ;x < rv; ++x)
+
+    for (x = 0; x < rv; ++x)
     {
         char c = buf[x];
         // Ignore '\0' - dunno why these turn up.
         /** @todo investigate this .. */
         if (!c) continue;
-        
 
         //printf("f = %d c = '%c' (%d)\n", ctx->grouchfsm, c, c);
         if (cue[ctx->grouchfsm] == c)
@@ -120,8 +133,8 @@ static int maybe_grouch(up_context_t *ctx, up_load_arg_t *arg, const uint8_t *bu
             ++ctx->grouchfsm;
             if (ctx->grouchfsm == cuelen)
             {
-                // Got our cue! Go do it 
-                int rv; 
+                // Got our cue! Go do it
+                int rv;
                 rv = grouch(ctx, arg);
                 // We're either errored or done.
                 return (rv < 0 ? -1 : 1);
@@ -133,9 +146,10 @@ static int maybe_grouch(up_context_t *ctx, up_load_arg_t *arg, const uint8_t *bu
         }
     }
     // Still hunting.
-    return 0; 
+    return 0;
 
 }
+
 
 int up_internal_check_control(up_context_t *ctx)
 {
@@ -153,7 +167,7 @@ int up_internal_check_control(up_context_t *ctx)
         {
             switch (bx[0])
             {
-            case 'x': 
+            case 'x':
                 fprintf(stderr, "Detected C-a C-x ; dying.\n");
                 return -2;
             default:

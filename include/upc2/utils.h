@@ -4,6 +4,9 @@
 #ifndef UTILS_H_INCLUDED
 #define UTILS_H_INCLUDED
 
+#include <stdint.h>
+#include "upc2/up.h"
+
 int utils_safe_write(int fd, const uint8_t *data, int len);
 
 /* Check if there has been a control character - the only thing this

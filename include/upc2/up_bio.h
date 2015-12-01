@@ -4,28 +4,32 @@
 #ifndef UP_BIO_H_INCLUDED
 #define UP_BIO_H_INCLUDED
 
+#include <stdint.h>
+
 typedef struct up_bio_struct {
     void *ctx;
-    
+
     /** Retrieve an fd you can poll() on */
-    int (*poll_fd)(up_bio_t *bio);
+    int (*poll_fd)(struct up_bio_struct *bio);
 
     /** read(), non-blocking */
-    int (*read)(up_bio_t *bio, uint8_t *bytes, int nr);
+    int (*read)(struct up_bio_struct *bio, uint8_t *bytes, int nr);
 
     /** write(), non-blocking */
-    int (*write)(up_bio_t *bio, const uint8_t *bytes, int nr);
-   
+    int (*write)(struct up_bio_struct *bio, const uint8_t *bytes, int nr);
+
     /** write(), blocking */
-    int (*safe_write)(up_bio_t *bio, const uint8_t *bytes, int nr);
+    int (*safe_write)(struct up_bio_struct *bio,
+                      const uint8_t        *bytes,
+                      int                   nr);
 
     /** set baud rate */
-    void (*set_baud)(up_bio_t *bio, int baud);
+    int (*set_baud)(struct up_bio_struct *bio, int baud);
 
-    /** Dispose of this BIO, closing resources and
-     *  releasing the BIO if dynamically allocated
+    /** Dispose of this BIO, closing resources and releasing the BIO
+     *  if dynamically allocated
      */
-    void (*dispose)(up_bio_t *bio);
+    void (*dispose)(struct up_bio_struct *bio);
 } up_bio_t;
 
 
