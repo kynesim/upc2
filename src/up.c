@@ -12,7 +12,6 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdarg.h>
 #include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -25,50 +24,36 @@
 #include "upc2/xmodem.h"
 
 
-static int safe_putty(up_context_t *ctx, const char *str, ... );
 static void groan_with(up_context_t *ctx, int which);
 static void console_help(up_context_t *upc);
 
 static void console_help(up_context_t *upc) {
-    safe_putty(upc,
-               "\n"
-               "upc2 0.1 (C) Kynesim Ltd 2012-5\n"
-               "\n"
-               "Console help\n"
-               "\n"
-               "C-a h                This help message\n"
-               "C-a x                Quit.\n"
-               "C-a C-a              Literal C-a \n"
-               "C-a <anything else>  Spiders?\n"
-               "\n");
+    utils_safe_printf(upc,
+                      "\n"
+                      "upc2 0.1 (C) Kynesim Ltd 2012-5\n"
+                      "\n"
+                      "Console help\n"
+                      "\n"
+                      "C-a h                This help message\n"
+                      "C-a x                Quit.\n"
+                      "C-a C-a              Literal C-a \n"
+                      "C-a <anything else>  Spiders?\n"
+                      "\n");
 }
 
 static void groan_with(up_context_t *upc, int which) {
     static const char * groans[] =
     {
-        "Did your mother not warn you about strange escape codes?",
-        "War never changes",
-        "You are in a maze of twisty IPv6 addresses, all the same",
-        "The only way to win is not to invoke escape codes at random",
-        "Right on, Commander!"
+        "Did your mother not warn you about strange escape codes?\n",
+        "War never changes\n",
+        "You are in a maze of twisty IPv6 addresses, all the same\n",
+        "The only way to win is not to invoke escape codes at random\n",
+        "Right on, Commander!\n"
     };
     int p = which % (sizeof(groans)/sizeof(char *));
-    safe_putty(upc, groans[p]);
+    utils_safe_printf(upc, groans[p]);
 }
 
-
-static int safe_putty(up_context_t *ctx, const char *str, ... )
-{
-    va_list ap;
-    char buf[4096];
-    int l;
-
-    va_start(ap, str);
-    l = vsnprintf(buf, 4096, str, ap);
-    va_end(ap);
-    utils_safe_write(ctx->ttyfd, (const uint8_t *)buf, l);
-    return l;
-}
 
 int up_create(up_context_t **ctxp) {
     up_context_t *ctx = NULL;
@@ -106,7 +91,6 @@ int up_start_console(up_context_t *ctx, int tty_fd) {
     tcgetattr(tty_fd, &t);
     ctx->tc = t;
     ctx->control_mode = 0;
-    ctx->ctrl = 0;
     ctx->cur_arg = 0;
     ctx->grouchfsm = -2;
     cfmakeraw(&t);
@@ -119,7 +103,8 @@ int up_start_console(up_context_t *ctx, int tty_fd) {
     ctx->ttyfd = tty_fd;
     ctx->ttyflags = fcntl(ctx->ttyfd, F_GETFL, 0);
     fcntl(ctx->ttyfd, F_SETFL, O_NONBLOCK);
-    return safe_putty(ctx, "upc2: Starting terminal. C-a h for help\n");
+    return utils_safe_printf(ctx,
+                             "upc2: Starting terminal. C-a h for help\n");
 }
 
 
@@ -142,16 +127,24 @@ int up_operate_console(up_context_t  *ctx,
     poll(fds, 2, 1000);
     if ((fds[0].revents & (POLLHUP | POLLERR)) ||
         (fds[1].revents & (POLLHUP | POLLERR))) {
-        safe_putty(ctx, "! upc2 I/O falied: fd %d / 0x%04x , %d 0x%04x\n",
-                   fds[0].fd, fds[0].revents,
-                   fds[1].fd, fds[1].revents);
+        utils_safe_printf(ctx,
+                          "! upc2 I/O falied: fd %d / 0x%04x , %d 0x%04x\n",
+                          fds[0].fd, fds[0].revents,
+                          fds[1].fd, fds[1].revents);
         ret = -1;
         goto end;
     }
+
+    /* Read from serial, copy to output and (potentially) log */
     rv = ctx->bio->read( ctx->bio, buf, 32 );
-    if (ctx->logfd >= 0) {
-        utils_safe_write(ctx->logfd, buf, rv);
+    if (rv > 0) {
+        utils_safe_write(ctx->ttyfd, buf, rv);
+        if (ctx->logfd >= 0) {
+            utils_safe_write(ctx->logfd, buf, rv);
+        }
     }
+
+    /* Run protocol state machines */
     if (ctx->cur_arg < nr_args) {
         if (ctx->grouchfsm == -2) {
             // Just starting. Switch baud.
@@ -187,20 +180,31 @@ int up_operate_console(up_context_t  *ctx,
         }
     }
 
-    if (rv > 0) {
-        utils_safe_write(ctx->ttyfd, buf, rv);
-    }
     // Anything from the terminal?
+    /* NB: unlike utils_check_critical_control(), this passes data
+     * from the terminal to the serial output.
+     */
     rv = read(ctx->ttyfd, buf, 32);
     if (rv > 0) {
         int i, optr = 0;
+
         for (i = 0; i < rv; ++i) {
             if (ctx->control_mode) {
+                static int groan = 0;
+
                 switch (buf[i]) {
-                case 'h': console_help(ctx); break;
-                case 's': safe_putty(ctx, "Oh no! Spiders!\n"); break;
-                case 'g': groan_with(ctx,0); break;
-                case 'x': ret = -1; break;
+                    case 'h':
+                        console_help(ctx);
+                        break;
+                    case 's':
+                        utils_safe_printf(ctx, "Oh no! Spiders!\n");
+                        break;
+                    case 'g':
+                        groan_with(ctx, groan++);
+                        break;
+                    case 'x':
+                        ret = -1;
+                        break;
                 default:
                     // Literal whatever-it-is.
                     buf[optr++] = buf[i];
@@ -212,14 +216,16 @@ int up_operate_console(up_context_t  *ctx,
                 buf[optr++] = buf[i];
             }
         }
+        /** @todo Don't echo while downloads are ongoing? */
         ctx->bio->write(ctx->bio, buf, optr);
     } else if (rv == 0) {
-        safe_putty(ctx, "! upc2: Input closed.\n");
+        utils_safe_printf(ctx, "! upc2: Input closed.\n");
         ret = -1;
     } else if (rv < 0) {
         if (!(errno == EINTR || errno == EAGAIN))  {
-            safe_putty(ctx, "! upc2: Failed to read tty:  %s [%d] \n",
-                       strerror(errno), errno);
+            utils_safe_printf(ctx,
+                              "! upc2: Failed to read tty:  %s [%d]\n",
+                              strerror(errno), errno);
             ret = -1;
         }
     }
@@ -228,7 +234,7 @@ end:
 }
 
 int up_finish_console(up_context_t *ctx) {
-    safe_putty(ctx, "! upc2: Terminating console.\n");
+    utils_safe_printf(ctx, "! upc2: Terminating console.\n");
     tcsetattr(ctx->ttyfd, TCSANOW, &ctx->tc);
     fcntl(ctx->ttyfd, F_SETFL, ctx->ttyflags);
     return 0;
@@ -279,8 +285,6 @@ int up_read_baud(const char *lne)
     }
     return baud;
 }
-
-
 
 /* End file */
 

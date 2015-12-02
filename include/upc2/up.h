@@ -46,10 +46,7 @@ typedef struct up_context_struct {
     /** Log file descriptor */
     int logfd;
 
-    /** Current control state */
-    int ctrl;
-
-    /** Control mode */
+    /** Control mode: 1 => last keypress was ^A */
     int control_mode;
 } up_context_t;
 

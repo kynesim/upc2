@@ -236,8 +236,9 @@ static int xmodem_go(up_context_t  *ctx,
         }
     }
 
-    printf("[[ XMODEM start detected. Uploading %d bytes. ]]\n",
-           (int)ib);
+    utils_safe_printf(ctx,
+                      "[[ XMODEM start detected. Uploading %d bytes. ]]\n",
+                      (int)ib);
 
     /* We are started, send everything */
     while (!done)
@@ -248,20 +249,16 @@ static int xmodem_go(up_context_t  *ctx,
         if (utils_check_critical_control(ctx) < 0)
             return -2;
 
-        printf("[[ Send %d bytes (%d remain) ]]\n",
-               (int)bytes_taken, (int)image_bytes);
+        utils_safe_printf(ctx, "[[ Send %d bytes (%d remain) ]]\n",
+                          (int)bytes_taken, (int)image_bytes);
         send_buffer(ctx, buffer, use_crc16);
-
-
-        /* XXX: could send under interrupt and use the time to set up
-         * the next buffer?
-         */
 
         /* Wait to see if the 8148 liked it */
         do
         {
             rx_byte = get_byte(ctx);
-            if (rx_byte < 0) { return rx_byte; }
+            if (rx_byte < 0)
+                return rx_byte;
         } while (rx_byte != XMODEM_ACK && rx_byte != XMODEM_NAK);
 
 
@@ -297,7 +294,7 @@ static int xmodem_go(up_context_t  *ctx,
 #endif
 
     send_byte(ctx, XMODEM_DONE);
-    printf("[[ XMODEM complete ]]\n");
+    utils_safe_printf(ctx, "[[ XMODEM complete ]]\n");
 
     /* Download finished */
     return 1;
@@ -332,17 +329,9 @@ static int get_byte(up_context_t *upc)
 
 static int send_byte(up_context_t *upc, const uint8_t c)
 {
-    while (1)
-    {
-        int rv = upc->bio->write(upc->bio, &c, 1);
-        if (rv < 0)
-        {
-            if (errno == EINTR || errno == EAGAIN)
-                continue;
-            return rv;
-        }
-        if (rv > 0) { return 0; }
-    }
+    int rv = upc->bio->safe_write(upc->bio, &c, 1);
+
+    return (rv < 0) ? rv : 0;
 }
 
 int xmodem_boot(up_context_t *ctx, up_load_arg_t *arg)
@@ -378,18 +367,24 @@ int xmodem_boot(up_context_t *ctx, up_load_arg_t *arg)
     }
 
     buf = (uint8_t *)malloc(nr_bytes);
+    if (buf == NULL)
+    {
+#if DEBUG0
+        fprintf(stderr, "Out of memory allocating input buffer\n");
+#endif
+        return -1;
+    }
     while (done < nr_bytes)
     {
-        rv = read(arg->fd, &buf[done], nr_bytes-done);
+        rv = utils_safe_read(arg->fd, &buf[done], nr_bytes-done);
         if (rv < 0)
         {
-            if (errno == EINTR || errno == EAGAIN)
-                continue;
             goto end;
         }
         else if (!rv)
         {
-            return -1;
+            rv = -1;
+            goto end;
         }
         else
         {
@@ -399,8 +394,7 @@ int xmodem_boot(up_context_t *ctx, up_load_arg_t *arg)
     rv = xmodem_go(ctx, buf, nr_bytes);
 
 end:
-    if (buf)
-        free(buf);
+    free(buf);
     return rv;
 }
 

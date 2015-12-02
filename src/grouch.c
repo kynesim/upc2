@@ -46,26 +46,24 @@ static int grouch(up_context_t *upc, up_load_arg_t *arg) {
         if (utils_check_critical_control(upc) < 0)
             return -2;
 
+        /* Echo serial input to console */
         rv = upc->bio->read(upc->bio, &buf[in_buf], 4096-in_buf);
         if (rv > 0)
         {
             utils_safe_write(upc->ttyfd, &buf[in_buf], rv);
         }
 
-        rv = read(arg->fd, &buf[in_buf], 4096-in_buf);
+        rv = utils_safe_read(arg->fd, &buf[in_buf], 4096-in_buf);
         if (rv < 0)
         {
-            if (!(errno == EINTR || errno == EAGAIN))
-            {
-                fprintf(stderr,
-                        "Error reading grouch file %s:  %s [%d] \n",
-                        NAME_MAYBE_NULL(arg->file_name),
-                        strerror(errno), errno);
-                /** @todo Should stuff the rest of the file and send a
-                 *   deliberately incorrect checksum to force restart.
-                 */
-                return -1;
-            }
+            fprintf(stderr,
+                    "Error reading grouch file %s:  %s [%d] \n",
+                    NAME_MAYBE_NULL(arg->file_name),
+                    strerror(errno), errno);
+            /** @todo Should stuff the rest of the file and send a
+             *   deliberately incorrect checksum to force restart.
+             */
+            return -1;
         }
         else if (!rv)
         {
@@ -82,7 +80,10 @@ static int grouch(up_context_t *upc, up_load_arg_t *arg) {
                     buf[in_buf+2] = (sum >> 8) & 0xff;
                     buf[in_buf+3] = (sum >> 0) & 0xff;
                     in_buf += 4;
-                    printf("! grouch complete: host sum = 0x%08x \n", sum);
+                    utils_safe_printf(
+                        upc,
+                        "! grouch complete: host sum = 0x%08x \n",
+                        sum);
                     wrote_sum = 1;
                 }
             }
@@ -136,7 +137,7 @@ int maybe_grouch(up_context_t  *ctx,
             {
                 // Got our cue! Go do it
                 int rv;
-                printf("Got cue, grouching\n");
+
                 rv = grouch(ctx, arg);
                 // We're either errored or done.
                 return (rv < 0 ? -1 : 1);
@@ -151,35 +152,3 @@ int maybe_grouch(up_context_t  *ctx,
     return 0;
 
 }
-
-
-int up_internal_check_control(up_context_t *ctx)
-{
-    int rv;
-    char bx[2];
-    rv = read(ctx->ttyfd, bx, 1);
-    if (rv == 1)
-    {
-        if (!ctx->ctrl && bx[0] == 0x01)
-        {
-            ctx->ctrl = 1;
-            return 0;
-        }
-        if (ctx->ctrl)
-        {
-            switch (bx[0])
-            {
-            case 'x':
-                fprintf(stderr, "Detected C-a C-x ; dying.\n");
-                return -2;
-            default:
-                // No one cares in grouch.
-                break;
-            }
-            ctx->ctrl = 0;
-        }
-    }
-    return 0;
-}
-
-/* End File */

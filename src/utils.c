@@ -3,6 +3,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <stdint.h>
 #include <string.h>
 #include <errno.h>
@@ -31,21 +32,44 @@ int utils_safe_write(int fd, const uint8_t *data, int len) {
     return done;
 }
 
+
+int utils_safe_read(int fd, uint8_t *data, int len)
+{
+    int rv;
+
+    while (1)
+    {
+        rv = read(fd, data, len);
+        if (rv < 0)
+        {
+            if (!(errno == EINTR || errno == EAGAIN))
+                return rv;
+        }
+        else
+        {
+            /* NB: can be zero */
+            return rv;
+        }
+    }
+    return -1;
+}
+
+
 int utils_check_critical_control(up_context_t *ctx) {
     int rv;
-    char bx[2];
+    char bx;
 
-    rv = read(ctx->ttyfd, bx, 1);
+    rv = read(ctx->ttyfd, &bx, 1);
     if (rv == 1)
     {
-        if (!ctx->ctrl && bx[0] == 0x01)
+        if (!ctx->control_mode && bx == 0x01)
         {
-            ctx->ctrl = 1;
+            ctx->control_mode = 1;
             return 0;
         }
-        if (ctx->ctrl)
+        if (ctx->control_mode)
         {
-            switch (bx[0])
+            switch (bx)
             {
                 case 'x':
                     fprintf(stderr, "Detected C-a C-x ; dying.\n");
@@ -54,7 +78,7 @@ int utils_check_critical_control(up_context_t *ctx) {
                     // No one cares in grouch.
                     break;
             }
-            ctx->ctrl = 0;
+            ctx->control_mode = 0;
         }
     }
     return 0;
@@ -86,5 +110,20 @@ int utils_bio_safe_write(up_bio_t *bio, const uint8_t *data, int nr) {
     }
     return done;
 }
+
+
+int utils_safe_printf(up_context_t *ctx, const char *str, ...)
+{
+    va_list ap;
+    char buf[4096];
+    int l;
+
+    va_start(ap, str);
+    l = vsnprintf(buf, 4096, str, ap);
+    va_end(ap);
+    utils_safe_write(ctx->ttyfd, (const uint8_t *)buf, l);
+    return l;
+}
+
 
 /* End file */

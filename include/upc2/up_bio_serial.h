@@ -16,6 +16,10 @@ typedef struct up_bio_serial_struct {
 
 } up_bio_serial_t;
 
+/* Allocate and initialise a context structure to access the named
+ * serial device (e.g. /dev/ttyUSB0).  The device will be opened and
+ * all the function pointers will be filled in.
+ */
 up_bio_t *up_bio_serial_create(const char *serial_port);
 
 #endif
