@@ -53,6 +53,7 @@ int main(int argn, char *args[]) {
 
     memset(&up_args, '\0', sizeof(up_args));
     up_args[0].fd = -1;
+    up_args[0].baud = 115200;
 
     while ((option = getopt_long(argn, args,
                                  "l:s:b:g:p:h",
@@ -95,6 +96,8 @@ int main(int argn, char *args[]) {
                         return 4;
                     }
                 }
+                /* Set a default baud rate */
+                up_args[cur_arg].baud = up_args[cur_arg-1].baud;
                 up_args[cur_arg].file_name = optarg;
                 break;
 
@@ -198,7 +201,7 @@ int main(int argn, char *args[]) {
 
     {
         int i;
-        for (i =0 ;i < cur_arg; ++i)
+        for (i = 0; i < cur_arg; ++i)
         {
             if (up_args[cur_arg].fd > -1)
             {

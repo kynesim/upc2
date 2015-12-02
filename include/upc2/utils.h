@@ -14,8 +14,8 @@ int utils_safe_write(int fd, const uint8_t *data, int len);
 int utils_safe_read(int fd, uint8_t *data, int len);
 
 /* Check if there has been a control character - the only thing this
- *  checks for is critical control characters, like C-a C-x, so you
- * can abort failed grouches.
+ *  checks for is critical control characters, like C-a x, so you
+ *  can abort failed grouches.
  *
  *  Also sets up->ctrl appropriately so that split control commands
  * work properly (C-a in grouch, then h after).

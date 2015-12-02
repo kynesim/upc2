@@ -92,7 +92,7 @@ static int grouch(up_context_t *upc, up_load_arg_t *arg) {
         {
             int x;
             // Update sum.
-            for (x =0 ; x< rv; ++x)
+            for (x = 0; x < rv; ++x)
             {
                 sum += buf[in_buf + x];
             }
