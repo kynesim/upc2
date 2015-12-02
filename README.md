@@ -56,21 +56,21 @@ upc2 --serial /dev/ttyUSB1 \
 Keyboard handling
 -----------------
 
-Uploads can be interrupted by the key sequence "C-a x", which will
+Uploads can be interrupted by the key sequence `C-a x`, which will
 cause upc2 to quit.
 
 During uploads, input from the console is not passed through to the
 serial connection.  Once the uploads are complete, the serial
 connection is switched to the specified baud rate and upc2 becomes a
 console program.  Commands are given to the program through escape key
-sequences beginning with a C-a:
+sequences beginning with a `C-a`:
 
  *  `C-a x`   Quits upc2
  *  `C-a h`   Prints a console help message
  *  `C-a C-a` Sends a C-a through the serial connection
 
 Other escape sequences may be added as needed, so users should not
-expect "C-a <key>" to send <key> to the serial connection without
+expect `C-a <key>` to send `<key>` to the serial connection without
 checking.  Traps have been laid for the excessively bold.
 
 
