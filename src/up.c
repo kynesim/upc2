@@ -27,7 +27,6 @@
 
 static int safe_putty(up_context_t *ctx, const char *str, ... );
 static void groan_with(up_context_t *ctx, int which);
-//static void up_internal_set_baud(up_context_t *ctx, up_load_arg_t *arg);
 static void console_help(up_context_t *upc);
 
 static void console_help(up_context_t *upc) {
@@ -43,15 +42,6 @@ static void console_help(up_context_t *upc) {
                "C-a <anything else>  Spiders?\n"
                "\n");
 }
-
-#if 0
-static void up_internal_set_baud(up_context_t *ctx, up_load_arg_t *arg) {
-    if (arg->baud) {
-        printf("[[ Changing baud rate to %d ]] \n", arg->baud);
-        ctx->bio->set_baud(ctx->bio, arg->baud);
-    }
-}
-#endif
 
 static void groan_with(up_context_t *upc, int which) {
     static const char * groans[] =
@@ -162,8 +152,6 @@ int up_operate_console(up_context_t  *ctx,
     if (ctx->logfd >= 0) {
         utils_safe_write(ctx->logfd, buf, rv);
     }
-    safe_putty(ctx, "! cur_arg=%d, nr_args=%d, fsm=%d\n",
-               ctx->cur_arg, nr_args, ctx->grouchfsm);
     if (ctx->cur_arg < nr_args) {
         if (ctx->grouchfsm == -2) {
             // Just starting. Switch baud.
@@ -199,13 +187,11 @@ int up_operate_console(up_context_t  *ctx,
         }
     }
 
-    safe_putty(ctx, "! serial rv = %d\n", rv);
     if (rv > 0) {
         utils_safe_write(ctx->ttyfd, buf, rv);
     }
     // Anything from the terminal?
     rv = read(ctx->ttyfd, buf, 32);
-    safe_putty(ctx, "! ttx read rv = %d\n", rv);
     if (rv > 0) {
         int i, optr = 0;
         for (i = 0; i < rv; ++i) {

@@ -43,7 +43,8 @@ static int grouch(up_context_t *upc, up_load_arg_t *arg) {
     while (!done || in_buf)
     {
         int rv;
-        if (utils_check_critical_control(upc) < 0) { return -2; }
+        if (utils_check_critical_control(upc) < 0)
+            return -2;
 
         rv = upc->bio->read(upc->bio, &buf[in_buf], 4096-in_buf);
         if (rv > 0)
@@ -127,7 +128,7 @@ int maybe_grouch(up_context_t  *ctx,
         /** @todo investigate this .. */
         if (!c) continue;
 
-        //printf("f = %d c = '%c' (%d)\n", ctx->grouchfsm, c, c);
+        //  printf("f = %d c = '%c' (%d)\n", ctx->grouchfsm, c, c);
         if (cue[ctx->grouchfsm] == c)
         {
             ++ctx->grouchfsm;
@@ -135,6 +136,7 @@ int maybe_grouch(up_context_t  *ctx,
             {
                 // Got our cue! Go do it
                 int rv;
+                printf("Got cue, grouching\n");
                 rv = grouch(ctx, arg);
                 // We're either errored or done.
                 return (rv < 0 ? -1 : 1);

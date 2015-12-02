@@ -67,14 +67,12 @@ static int up_bio_serial_set_baud(up_bio_t *bio, int baud) {
     return 0;
 }
 
-#if 0
 static int up_bio_serial_safe_write(up_bio_t      *bio,
                                     const uint8_t *bytes,
                                     int            nr) {
     //SERIAL_CTX(ctx, bio);
     return utils_bio_safe_write(bio, bytes, nr);
 }
-#endif
 
 static void up_bio_serial_dispose(up_bio_t *bio) {
     SERIAL_CTX(ctx, bio);
@@ -102,6 +100,7 @@ up_bio_t *up_bio_serial_create(const char *port) {
     a_bio->poll_fd = up_bio_serial_poll_fd;
     a_bio->read = up_bio_serial_read;
     a_bio->write = up_bio_serial_write;
+    a_bio->safe_write = up_bio_serial_safe_write;
     a_bio->set_baud = up_bio_serial_set_baud;
     ctx->serial_fd = open(port, O_RDWR | O_NONBLOCK);
     if (ctx->serial_fd < 0) {
