@@ -7,7 +7,7 @@
 #include <stdint.h>
 
 typedef struct up_bio_struct {
-    void *ctx;
+    void *handle;
 
     /** Retrieve an fd you can poll() on */
     int (*poll_fd)(struct up_bio_struct *bio);

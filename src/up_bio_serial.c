@@ -25,8 +25,8 @@
 #include "upc2/utils.h"
 
 
-#define SERIAL_CTX(c, bio)                          \
-    up_bio_serial_t *(c) = (up_bio_serial_t *)((bio)->ctx)
+#define SERIAL_HANDLE(c, bio)                          \
+    up_bio_serial_t *(c) = (up_bio_serial_t *)((bio)->handle)
 
 
 static void up_bio_serial_dispose(up_bio_t *bio);
@@ -34,24 +34,24 @@ static int up_bio_serial_poll_fd(up_bio_t *bio);
 static int up_bio_serial_read(up_bio_t *bio, uint8_t *tgt, int nr);
 
 static int up_bio_serial_poll_fd(up_bio_t *bio) {
-    SERIAL_CTX(ctx, bio);
-    return ctx->serial_fd;
+    SERIAL_HANDLE(handle, bio);
+    return handle->serial_fd;
 }
 
 static int up_bio_serial_read(up_bio_t *bio, uint8_t *tgt, int nr) {
-    SERIAL_CTX(ctx, bio);
-    return read(ctx->serial_fd, tgt, nr);
+    SERIAL_HANDLE(handle, bio);
+    return read(handle->serial_fd, tgt, nr);
 }
 
 static int up_bio_serial_write(up_bio_t      *bio,
                                const uint8_t *bytes,
                                int            nr) {
-    SERIAL_CTX(ctx, bio);
-    return write(ctx->serial_fd, bytes, nr);
+    SERIAL_HANDLE(handle, bio);
+    return write(handle->serial_fd, bytes, nr);
 }
 
 static int up_bio_serial_set_baud(up_bio_t *bio, int baud) {
-    SERIAL_CTX(ctx, bio);
+    SERIAL_HANDLE(handle, bio);
 
     if (baud)
     {
@@ -60,9 +60,9 @@ static int up_bio_serial_set_baud(up_bio_t *bio, int baud) {
         printf("[[ Changing baud rate to %d]]\n", baud);
         sleep(1); /* Allow drainage */
 
-        tcgetattr(ctx->serial_fd, &tios);
+        tcgetattr(handle->serial_fd, &tios);
         cfsetspeed(&tios, baud);
-        tcsetattr(ctx->serial_fd, TCSADRAIN, &tios);
+        tcsetattr(handle->serial_fd, TCSADRAIN, &tios);
     }
     return 0;
 }
@@ -70,17 +70,17 @@ static int up_bio_serial_set_baud(up_bio_t *bio, int baud) {
 static int up_bio_serial_safe_write(up_bio_t      *bio,
                                     const uint8_t *bytes,
                                     int            nr) {
-    //SERIAL_CTX(ctx, bio);
+    //SERIAL_HANDLE(handle, bio);
     return utils_bio_safe_write(bio, bytes, nr);
 }
 
 static void up_bio_serial_dispose(up_bio_t *bio) {
-    SERIAL_CTX(ctx, bio);
-    if (ctx->serial_fd >= 0) {
-        tcsetattr(ctx->serial_fd, TCSAFLUSH, &ctx->serial_tc);
-        close(ctx->serial_fd);
+    SERIAL_HANDLE(handle, bio);
+    if (handle->serial_fd >= 0) {
+        tcsetattr(handle->serial_fd, TCSAFLUSH, &handle->serial_tc);
+        close(handle->serial_fd);
     }
-    free(ctx);
+    free(handle);
     // Make sure further calls are easy for valgrind
     // to catch.
     memset(bio, '\0', sizeof(up_bio_t));
@@ -90,35 +90,35 @@ static void up_bio_serial_dispose(up_bio_t *bio) {
 
 up_bio_t *up_bio_serial_create(const char *port) {
     up_bio_t *a_bio = (up_bio_t *)malloc(sizeof(up_bio_t));
-    up_bio_serial_t *ctx =
+    up_bio_serial_t *handle =
         (up_bio_serial_t *)malloc(sizeof(up_bio_serial_t));
 
     memset(a_bio, '\0', sizeof(up_bio_t));
-    memset(ctx, '\0', sizeof(up_bio_serial_t));
-    a_bio->ctx = ctx;
+    memset(handle, '\0', sizeof(up_bio_serial_t));
+    a_bio->handle = handle;
     a_bio->dispose = up_bio_serial_dispose;
     a_bio->poll_fd = up_bio_serial_poll_fd;
     a_bio->read = up_bio_serial_read;
     a_bio->write = up_bio_serial_write;
     a_bio->safe_write = up_bio_serial_safe_write;
     a_bio->set_baud = up_bio_serial_set_baud;
-    ctx->serial_fd = open(port, O_RDWR | O_NONBLOCK);
-    if (ctx->serial_fd < 0) {
+    handle->serial_fd = open(port, O_RDWR | O_NONBLOCK);
+    if (handle->serial_fd < 0) {
         fprintf(stderr, "! Cannot open %s: %s [%d] \n",
                 port, strerror(errno), errno);
         goto fail;
     }
     struct termios s;
-    tcgetattr(ctx->serial_fd, &ctx->serial_tc);
-    s = ctx->serial_tc;
+    tcgetattr(handle->serial_fd, &handle->serial_tc);
+    s = handle->serial_tc;
     cfmakeraw(&s);
     s.c_cflag |= CLOCAL | CREAD;
     s.c_cflag &= ~(CRTSCTS);
     s.c_iflag &= ~(IXON);
-    tcsetattr(ctx->serial_fd, TCSANOW, &s);
+    tcsetattr(handle->serial_fd, TCSANOW, &s);
     return a_bio;
 fail:
-    free(ctx);
+    free(handle);
     free(a_bio);
     return NULL;
 }
