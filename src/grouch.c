@@ -24,7 +24,7 @@ static int grouch(up_context_t *upc, up_load_arg_t *arg) {
     len = lseek(arg->fd, 0, SEEK_END);
     if (len == (off_t)-1)
     {
-        fprintf(stderr, "Cannot lseek() %s: %s [%d] \n",
+        fprintf(stderr, "Cannot lseek() %s: %s [%d]\n",
                 NAME_MAYBE_NULL(arg->file_name),
                 strerror(errno), errno);
         return -1;

@@ -15,6 +15,7 @@
 #include <getopt.h>
 #include <upc2/up.h>
 #include <upc2/up_bio_serial.h>
+#include <upc2/utils.h>
 #include <time.h>
 #include <sys/time.h>
 #include <sys/fcntl.h>
@@ -25,7 +26,17 @@
 #include <string.h>
 
 #define MAX_ARGS 32
+#define MAX_SCRIPTS 10
 #define DEBUG0 1
+
+/* Structure to allow recursing into scripts */
+typedef struct up_parse_stack_struct
+{
+    char **argv;
+    int    argc;
+    int    optind;
+    char  *buffer;
+} up_parse_stack_t;
 
 
 struct option options[] = {
@@ -34,11 +45,13 @@ struct option options[] = {
     { "baud",     required_argument, NULL, 'b' },
     { "grouch",   required_argument, NULL, 'g' },
     { "protocol", required_argument, NULL, 'p' },
+    { "script",   required_argument, NULL, 'x' },
     { "help",     no_argument,       NULL, 'h' },
     { NULL, 0, NULL, 0 }
 };
 
 static void usage(void);
+static char *read_script(const char *filename, int *pargn, char ***pargs);
 
 int main(int argn, char *args[]) {
     up_context_t *upc;
@@ -47,7 +60,9 @@ int main(int argn, char *args[]) {
     int baud = 115200;
     int log_fd = -1;
     up_load_arg_t up_args[MAX_ARGS + 1];
+    up_parse_stack_t parse_stack[MAX_SCRIPTS + 1];
     int cur_arg = -1;
+    int cur_script = 0;
     const char *serial_port = "/dev/ttyUSB0";
     int option;
 
@@ -55,91 +70,145 @@ int main(int argn, char *args[]) {
     up_args[0].fd = -1;
     up_args[0].baud = 115200;
 
-    while ((option = getopt_long(argn, args,
-                                 "l:s:b:g:p:h",
-                                 options, NULL)) != -1)
+    /* We horribly abuse getopt_long() to recurse into script files
+     * (which are in fact just command line options in a file).  There
+     * is no guarantee that setting optind to anything other than 1
+     * works, however it seems to.
+     */
+
+    parse_stack[0].argv = args;
+    parse_stack[0].argc = argn;
+    parse_stack[0].buffer = NULL;
+
+    while (cur_script >= 0)
     {
-        switch (option)
+        while ((option = getopt_long(argn, args,
+                                     "l:s:b:g:p:h",
+                                     options, NULL)) != -1)
         {
-            case 'l':
-                if (log_fd != -1)
-                {
-                    fprintf(stderr, "Log file already open\n");
-                    return 3;
-                }
-                log_fd = open(optarg,
-                              O_WRONLY | O_CREAT | O_APPEND,
-                              0x644);
-                if (log_fd < 0)
-                {
-                    fprintf(stderr, "Cannot open log file %s: %s [%d]\n",
-                            optarg, strerror(errno), errno);
-                    return 3;
-                }
-                break;
+            switch (option)
+            {
+                case 'l':
+                    if (log_fd != -1)
+                    {
+                        fprintf(stderr, "Log file already open\n");
+                        return 3;
+                    }
+                    log_fd = open(optarg,
+                                  O_WRONLY | O_CREAT | O_APPEND,
+                                  0x644);
+                    if (log_fd < 0)
+                    {
+                        fprintf(stderr,
+                                "Cannot open log file %s: %s [%d]\n",
+                                optarg, strerror(errno), errno);
+                        return 3;
+                    }
+                    break;
 
-            case 's':
-                serial_port = optarg;
-                break;
+                case 's':
+                    serial_port = optarg;
+                    break;
 
-            case 'b':
-                if (cur_arg < 0)
-                {
-                    fprintf(stderr, "No boot stage for baud rate %s\n",
-                            optarg);
-                    return 6;
-                }
-                up_args[cur_arg].baud = up_read_baud(optarg);
-                break;
+                case 'b':
+                    if (cur_arg < 0)
+                    {
+                        fprintf(stderr, "No boot stage for baud rate %s\n",
+                                optarg);
+                        return 6;
+                    }
+                    up_args[cur_arg].baud = up_read_baud(optarg);
+                    break;
 
-            case 'g':
-                if (++cur_arg >= MAX_ARGS)
-                {
-                    fprintf(stderr, "Only %d upload files allowed\n",
-                            MAX_ARGS);
-                    return 4;
-                }
-                /* Set a default baud rate */
-                if (cur_arg > 0)
-                    up_args[cur_arg].baud = up_args[cur_arg-1].baud;
-                up_args[cur_arg].file_name = optarg;
-                break;
+                case 'g':
+                    if (++cur_arg >= MAX_ARGS)
+                    {
+                        fprintf(stderr, "Only %d upload files allowed\n",
+                                MAX_ARGS);
+                        return 4;
+                    }
+                    /* Set a default baud rate */
+                    if (cur_arg > 0)
+                        up_args[cur_arg].baud = up_args[cur_arg-1].baud;
+                    /* Duplicate the file name because we will free
+                     * the underlying buffer before it gets used.
+                     */
+                    up_args[cur_arg].file_name = strdup(optarg);
+                    if (up_args[cur_arg].file_name == NULL)
+                    {
+                        fprintf(stderr, "Out of memory storing filename\n");
+                        return 4;
+                    }
+                    break;
 
-            case 'p':
-                if (cur_arg < 0)
-                {
-                    fprintf(stderr, "No boot stage for protocol %s\n",
-                            optarg);
-                    return 7;
-                }
-                if (!strcmp(optarg, "grouch"))
-                    up_args[cur_arg].protocol = UP_PROTOCOL_GROUCH;
-                else if (!strcmp(optarg, "xmodem"))
-                    up_args[cur_arg].protocol = UP_PROTOCOL_XMODEM;
-                else
-                {
-                    fprintf(stderr, "Invalid protocol specified:"
-                            " must be 'grouch' or 'xmodem'\n");
+                case 'p':
+                    if (cur_arg < 0)
+                    {
+                        fprintf(stderr, "No boot stage for protocol %s\n",
+                                optarg);
+                        return 7;
+                    }
+                    if (!strcmp(optarg, "grouch"))
+                        up_args[cur_arg].protocol = UP_PROTOCOL_GROUCH;
+                    else if (!strcmp(optarg, "xmodem"))
+                        up_args[cur_arg].protocol = UP_PROTOCOL_XMODEM;
+                    else
+                    {
+                        fprintf(stderr, "Invalid protocol specified:"
+                                " must be 'grouch' or 'xmodem'\n");
+                        usage();
+                        return 5;
+                    }
+                    break;
+
+                case 'x':
+                    if (cur_script >= MAX_SCRIPTS)
+                    {
+                        fprintf(stderr,
+                                "Only %d script recursions allowed\n",
+                                MAX_SCRIPTS);
+                        return 8;
+                    }
+                    /* Push our current command line parsing state */
+                    parse_stack[cur_script++].optind = optind;
+                    /* Read in the file as if it was a command line
+                     * and reset the parsing.
+                     */
+                    parse_stack[cur_script].buffer =
+                        read_script(optarg, &argn, &args);
+                    parse_stack[cur_script].argc = argn;
+                    parse_stack[cur_script].argv = args;
+                    optind = 1;
+                    break;
+
+                default:
+                    /* Includes "--help" */
                     usage();
-                    return 5;
-                }
-                break;
+                    return 9;
+            }
+        }
 
-            default:
-                /* Includes "--help" */
-                usage();
-                return 9;
+        if (optind != argn && optind != argn-1)
+        {
+            fprintf(stderr, "Extra arguments on command line\n");
+            usage();
+            exit(1);
+        }
+        if (optind == argn - 1)
+        {
+            baud = up_read_baud(args[optind]);
+        }
+
+        /* Pop the parse stack, freeing any file buffers */
+        free(parse_stack[cur_script].buffer);
+        if (--cur_script >= 0)
+        {
+            /* Readers of a nervouse disposition may wish to look away */
+            args = parse_stack[cur_script].argv;
+            argn = parse_stack[cur_script].argc;
+            optind = parse_stack[cur_script].optind;
         }
     }
-
-    if (optind != argn && optind != argn-1)
-    {
-        fprintf(stderr, "Extra arguments on command line\n");
-        usage();
-        exit(1);
-    }
-    if (optind == argn - 1)
-        baud = up_read_baud(args[optind]);
 
     /* Safe because up_args contains MAX_ARGS + 1 elements */
     ++cur_arg;
@@ -150,6 +219,7 @@ int main(int argn, char *args[]) {
     /* Now open all the files .. */
     {
         int i;
+
         for (i = 0; i < cur_arg; ++i)
         {
             if (up_args[i].file_name)
@@ -157,7 +227,7 @@ int main(int argn, char *args[]) {
                 up_args[i].fd = open(up_args[i].file_name, O_RDONLY);
                 if (up_args[i].fd < 0)
                 {
-                    fprintf(stderr, "Cannot open %s: %s [%d] \n",
+                    fprintf(stderr, "Cannot open %s: %s [%d]\n",
                             up_args[i].file_name, strerror(errno), errno);
                     return 1;
                 }
@@ -208,11 +278,13 @@ int main(int argn, char *args[]) {
 
     {
         int i;
+
         for (i = 0; i < cur_arg; ++i)
         {
-            if (up_args[cur_arg].fd > -1)
+            if (up_args[i].fd > -1)
             {
-                close(up_args[cur_arg].fd);
+                close(up_args[i].fd);
+                free((void *)up_args[i].file_name);
             }
         }
     }
@@ -228,6 +300,7 @@ static void usage(void)
 {
     printf("Syntax: upc2 [--serial /dev/ttyUSBX] [--log file]\n"
            "\t\t[--grouch filename [--protocol proto] [--baud baud]]*\n"
+           "\t\t[--script filename]*\n"
            "\t\t[<baud>]\n"
            "\n"
            "\t--serial <device> \tUse the given serial device.\n"
@@ -249,8 +322,113 @@ static void usage(void)
            "\n"
            " upc2 --grouch myfile.xmodem --protocol xmodem --baud 9600"
            " --grouch myfile.grouch --protocol grouch --baud 1m 115200\n"
+           "\n"
+           "Script files are simply collections of command line arguments"
+           " exactly as they\nwould appear on the command line, except"
+           " that any whitespace (including\nnewlines) may separate tokens"
+           " and quotes do not work to 'escape' whitespace.\n"
         );
 }
 
-/* End file */
 
+/* Read in a text file and parse it as if it was command-line arguments */
+static char *read_script(const char *filename, int *pargn, char ***pargs)
+{
+    int argc = 1;
+    char **argv = malloc(sizeof(char *));
+    int fd;
+    char *buffer;
+    off_t bytes_to_read;
+    int bytes_read;
+    char *p;
+
+    /* We need an initial argv[0] for getopt to ignore */
+    if (argv == NULL)
+    {
+        fprintf(stderr, "Out of memory parsing script %s\n", filename);
+        return NULL;
+    }
+    argv[0] = NULL;
+
+    fd = open(filename, O_RDONLY);
+    if (fd < 0)
+    {
+        fprintf(stderr, "Cannot open script file %s: %s [%d]\n",
+                filename, strerror(errno), errno);
+        return NULL;
+    }
+
+    /* Determine how big the file is */
+    bytes_to_read = lseek(fd, 0, SEEK_END);
+    if (bytes_to_read == (off_t)-1)
+    {
+        fprintf(stderr, "Cannot lseek() %s: %s [%d]\n",
+                filename, strerror(errno), errno);
+        close(fd);
+        return NULL;
+    }
+    lseek(fd, 0, SEEK_SET);
+
+    /* Read in the whole script file in one go */
+    buffer = malloc(bytes_to_read);
+    if (buffer == NULL)
+    {
+        fprintf(stderr, "Out of memory reading script file %s\n",
+                filename);
+        close(fd);
+        return NULL;
+    }
+
+    p = buffer;
+    while (bytes_to_read > 0)
+    {
+        bytes_read = utils_safe_read(fd, (uint8_t *)p, bytes_to_read);
+        if (bytes_read < 0)
+        {
+            fprintf(stderr, "Error reading %s: %s [%d]\n",
+                    filename, strerror(errno), errno);
+            free(buffer);
+            close(fd);
+            return NULL;
+        }
+        else if (bytes_read == 0)
+        {
+            fprintf(stderr, "Unexpected EOF reading %s\n", filename);
+            free(buffer);
+            close(fd);
+            return NULL;
+        }
+        p += bytes_read;
+        bytes_to_read -= bytes_read;
+    }
+
+    close(fd);
+
+    /* Now start tokenising */
+    /* We use strtok() here, which isn't quite right.  If we were
+     * strictly imitating the command line we should pay attention to
+     * quotes (and possibly brackets and other shell-like things).
+     * However there's no real need to add such complexity, so we keep
+     * it simple.
+     */
+    p = strtok(buffer, " \t\r\n");
+    while (p != NULL)
+    {
+        char **q;
+
+        if ((q = realloc(argv, ++argc * sizeof(char *))) == NULL)
+        {
+            fprintf(stderr, "Out of memory parsing %s\n", filename);
+            free(argv);
+            free(buffer);
+            return NULL;
+        }
+        argv = q;
+        argv[argc-1] = p;
+        p = strtok(NULL, " \t\r\n");
+    }
+
+    *pargs = argv;
+    *pargn = argc;
+    return buffer;
+}
