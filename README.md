@@ -35,6 +35,7 @@ upc2 [--help] [--serial <device>] [--log <filename>] <boot-stage>* [<baud>]
                          present two protocols are supported;
                          "grouch", a simple in-house protocol, and
                          "xmodem", the venerable XMODEM protocol.
+                         The protocol defaults to "grouch".
 ```
 
 Baud rates can be abbreviated with "k" for kilobaud and "m" for

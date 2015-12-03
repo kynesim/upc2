@@ -244,7 +244,7 @@ int up_finish_console(up_context_t *ctx) {
 
 int up_become_console(up_context_t *ctx, up_load_arg_t *args, int nr_args) {
     int rv, r2;
-    rv = up_start_console(ctx, 0);
+    rv = up_start_console(ctx, STDIN_FILENO);
     if (rv < 0)
     {
         fprintf(stderr, "up_start_console returned %d\n", rv);

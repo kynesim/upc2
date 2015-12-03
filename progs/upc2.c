@@ -47,7 +47,7 @@ int main(int argn, char *args[]) {
     int baud = 115200;
     int log_fd = -1;
     up_load_arg_t up_args[MAX_ARGS + 1];
-    int cur_arg = 0;
+    int cur_arg = -1;
     const char *serial_port = "/dev/ttyUSB0";
     int option;
 
@@ -83,25 +83,35 @@ int main(int argn, char *args[]) {
                 break;
 
             case 'b':
+                if (cur_arg < 0)
+                {
+                    fprintf(stderr, "No boot stage for baud rate %s\n",
+                            optarg);
+                    return 6;
+                }
                 up_args[cur_arg].baud = up_read_baud(optarg);
                 break;
 
             case 'g':
-                if (up_args[cur_arg].file_name)
+                if (++cur_arg >= MAX_ARGS)
                 {
-                    if (++cur_arg >= MAX_ARGS)
-                    {
-                        fprintf(stderr, "Only %d upload files allowed\n",
-                                MAX_ARGS);
-                        return 4;
-                    }
+                    fprintf(stderr, "Only %d upload files allowed\n",
+                            MAX_ARGS);
+                    return 4;
                 }
                 /* Set a default baud rate */
-                up_args[cur_arg].baud = up_args[cur_arg-1].baud;
+                if (cur_arg > 0)
+                    up_args[cur_arg].baud = up_args[cur_arg-1].baud;
                 up_args[cur_arg].file_name = optarg;
                 break;
 
             case 'p':
+                if (cur_arg < 0)
+                {
+                    fprintf(stderr, "No boot stage for protocol %s\n",
+                            optarg);
+                    return 7;
+                }
                 if (!strcmp(optarg, "grouch"))
                     up_args[cur_arg].protocol = UP_PROTOCOL_GROUCH;
                 else if (!strcmp(optarg, "xmodem"))
@@ -131,11 +141,8 @@ int main(int argn, char *args[]) {
     if (optind == argn - 1)
         baud = up_read_baud(args[optind]);
 
-    if (up_args[cur_arg].file_name)
-    {
-        /* Safe because up_args contains MAX_ARGS + 1 elements */
-        ++cur_arg;
-    }
+    /* Safe because up_args contains MAX_ARGS + 1 elements */
+    ++cur_arg;
     up_args[cur_arg].fd = -1;
     up_args[cur_arg].baud = baud;
 
@@ -220,7 +227,7 @@ end:
 static void usage(void)
 {
     printf("Syntax: upc2 [--serial /dev/ttyUSBX] [--log file]\n"
-           "\t\t[[--grouch filename] [--protocol proto] [--baud baud]]*\n"
+           "\t\t[--grouch filename [--protocol proto] [--baud baud]]*\n"
            "\t\t[<baud>]\n"
            "\n"
            "\t--serial <device> \tUse the given serial device.\n"
