@@ -28,7 +28,7 @@ static int maybe_grouch(void          *h,
 const up_protocol_t grouch_protocol = {
     "grouch",
     NULL,
-    NULL,
+    utils_protocol_set_baud,
     maybe_grouch,
     NULL,
     NULL

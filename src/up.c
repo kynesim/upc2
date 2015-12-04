@@ -149,10 +149,9 @@ int up_operate_console(up_context_t  *ctx,
     if (ctx->cur_arg < nr_args) {
         if (ctx->grouchfsm == -2) {
             // Just starting. Switch baud.
-            ctx->bio->set_baud(ctx->bio, args[ctx->cur_arg].baud);
             ctx->grouchfsm = 0;
         }
-        else if (args[ctx->cur_arg].fd > -1) {
+        else if (cur_arg->fd > -1) {
             // Run the state machine.
             ret = cur_arg->protocol->transfer(cur_arg->protocol_handle,
                                               ctx, cur_arg,
@@ -171,7 +170,6 @@ int up_operate_console(up_context_t  *ctx,
                 cur_arg = &args[ctx->cur_arg];
                 ctx->grouchfsm = -1;
                 if (ctx->cur_arg < nr_args) {
-                    ctx->bio->set_baud(ctx->bio, cur_arg->baud);
                     if (cur_arg->protocol->prepare != NULL)
                         cur_arg->protocol->prepare(cur_arg->protocol_handle,
                                                    ctx, cur_arg);

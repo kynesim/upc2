@@ -60,7 +60,7 @@ static int xmodem_boot(void          *h,
 const up_protocol_t xmodem_protocol = {
     "xmodem",
     NULL,
-    NULL,
+    utils_protocol_set_baud,
     xmodem_boot,
     NULL,
     NULL

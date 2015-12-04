@@ -28,6 +28,9 @@ int utils_bio_safe_write(up_bio_t *bio, const uint8_t *data, int nr);
 /* safe_write for console with printf semantics */
 int utils_safe_printf(up_context_t *ctx, const char *str, ...);
 
+/* set_baud as a protocol "prepare" entry point */
+int utils_protocol_set_baud(void *h, up_context_t *ctx, up_load_arg_t *arg);
+
 #endif
 
 /* End file */
