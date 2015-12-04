@@ -28,6 +28,9 @@ static void console_help(up_context_t *upc);
 static void list_boot_stages(up_context_t  *ctx,
                              up_load_arg_t *args,
                              int            nr_args);
+static void continue_boot(up_context_t  *upc,
+                          up_load_arg_t *args,
+                          int            nr_args);
 
 static void console_help(up_context_t *upc) {
     utils_safe_printf(upc,
@@ -38,6 +41,7 @@ static void console_help(up_context_t *upc) {
                       "\n"
                       "C-a h                This help message\n"
                       "C-a l                List the boot stages\n"
+                      "C-a c                Continue paused boot\n"
                       "C-a x                Quit.\n"
                       "C-a C-a              Literal C-a \n"
                       "C-a <anything else>  Spiders?\n"
@@ -73,6 +77,22 @@ static void list_boot_stages(up_context_t  *upc,
                           args[i].baud);
     }
 }
+
+static void continue_boot(up_context_t  *upc,
+                          up_load_arg_t *args,
+                          int            nr_args)
+{
+    if (!upc->console_mode)
+        return;
+
+    upc->console_mode = (upc->cur_arg >= nr_args ||
+                         args[upc->cur_arg].fd < 0);
+    if (upc->console_mode)
+        utils_safe_printf(upc, "[[ No upload to continue ]]\n");
+    else
+        utils_safe_printf(upc, "[[ Continuing ]]\n");
+}
+
 
 
 int up_create(up_context_t **ctxp) {
@@ -135,8 +155,6 @@ int up_operate_console(up_context_t  *ctx,
     int ret = 0;
     struct pollfd fds[2];
     up_load_arg_t *cur_arg = &args[ctx->cur_arg];
-    int in_xfer_mode = (ctx->cur_arg < nr_args) &&
-        (cur_arg->fd > -1);
 
     fds[0].revents = fds[1].revents = 0;
     fds[0].fd = ctx->bio->poll_fd(ctx->bio);
@@ -167,7 +185,7 @@ int up_operate_console(up_context_t  *ctx,
     }
 
     /* Run protocol state machines */
-    if (in_xfer_mode) {
+    if (!ctx->console_mode) {
         // Run the state machine.
         ret = cur_arg->protocol->transfer(cur_arg->protocol_handle,
                                           ctx, cur_arg,
@@ -188,6 +206,11 @@ int up_operate_console(up_context_t  *ctx,
                               cur_arg->protocol->name,
                               NAME_MAYBE_NULL(cur_arg->file_name),
                               cur_arg->baud);
+            ctx->console_mode = (ctx->cur_arg >= nr_args ||
+                                 cur_arg->fd < 0 ||
+                                 cur_arg->deferred);
+            if (ctx->console_mode)
+                utils_safe_printf(ctx, "[[ Pausing ]]\n");
             if (ctx->cur_arg < nr_args) {
                 if (cur_arg->protocol->prepare != NULL)
                     cur_arg->protocol->prepare(cur_arg->protocol_handle,
@@ -221,6 +244,9 @@ int up_operate_console(up_context_t  *ctx,
                         break;
                     case 'l':
                         list_boot_stages(ctx, args, nr_args);
+                        break;
+                    case 'c':
+                        continue_boot(ctx, args, nr_args);
                         break;
                     case 'x':
                         ret = -1;

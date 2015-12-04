@@ -72,6 +72,7 @@ struct option options[] = {
     { "baud",     required_argument, NULL, 'b' },
     { "grouch",   required_argument, NULL, 'g' },
     { "protocol", required_argument, NULL, 'p' },
+    { "defer",    no_argument,       NULL, 'd' },
     { "script",   required_argument, NULL, 'x' },
     { "help",     no_argument,       NULL, 'h' },
     { NULL, 0, NULL, 0 }
@@ -112,7 +113,7 @@ int main(int argn, char *args[]) {
     while (cur_script >= 0)
     {
         while ((option = getopt_long(argn, args,
-                                     "l:s:b:g:p:h",
+                                     "l:s:b:g:p:hd",
                                      options, NULL)) != -1)
         {
             switch (option)
@@ -188,6 +189,15 @@ int main(int argn, char *args[]) {
                         selected_protocol->protocol;
                     up_args[cur_arg].protocol_handle =
                         selected_protocol->handle;
+                    break;
+
+                case 'd':
+                    if (cur_arg < 0)
+                    {
+                        fprintf(stderr, "No boot stage for deferral\n");
+                        return 8;
+                    }
+                    up_args[cur_arg].deferred = 1;
                     break;
 
                 case 'x':

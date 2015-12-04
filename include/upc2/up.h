@@ -41,6 +41,9 @@ typedef struct up_context_struct {
 
     /** Control mode: 1 => last keypress was ^A */
     int control_mode;
+
+    /** Pause file transfers */
+    int console_mode;
 } up_context_t;
 
 
@@ -89,6 +92,9 @@ typedef struct up_load_arg_struct {
 
     /** Baud rate */
     int baud;
+
+    /** Defer upload for user intervention */
+    int deferred;
 } up_load_arg_t;
 
 /** Create a UP context
