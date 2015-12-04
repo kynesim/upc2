@@ -47,6 +47,8 @@ static void console_help(up_context_t *upc) {
                       "C-a l                List the boot stages\n"
                       "C-a c                Continue paused boot\n"
                       "C-a <digit>          Select boot stage <digit>\n"
+                      "C-a n                Select next boot stage\n"
+                      "C-a p                Select previous boot stage\n"
                       "C-a x                Quit.\n"
                       "C-a C-a              Literal C-a \n"
                       "C-a <anything else>  Spiders?\n"
@@ -134,6 +136,29 @@ static void select_boot(up_context_t  *upc,
                                           upc, &args[selection]);
 }
 
+static void next_boot(up_context_t  *upc,
+                      up_load_arg_t *args,
+                      int            nr_args)
+{
+    if (upc->cur_arg + 1 >= nr_args)
+    {
+        utils_safe_printf(upc, "[[ No next boot stage ]]\n");
+        return;
+    }
+    select_boot(upc, args, nr_args, upc->cur_arg + 1);
+}
+
+static void previous_boot(up_context_t  *upc,
+                          up_load_arg_t *args,
+                          int            nr_args)
+{
+    if (upc->cur_arg - 1 < 0)
+    {
+        utils_safe_printf(upc, "[[ No previous boot stage ]]\n");
+        return;
+    }
+    select_boot(upc, args, nr_args, upc->cur_arg - 1);
+}
 
 
 int up_create(up_context_t **ctxp) {
@@ -251,7 +276,7 @@ int up_operate_console(up_context_t  *ctx,
                                  cur_arg->fd < 0 ||
                                  cur_arg->deferred);
             if (ctx->console_mode)
-                utils_safe_printf(ctx, "[[ Pausing ]]\n");
+                utils_safe_printf(ctx, "[[ Entering Console Mode ]]\n");
             if (ctx->cur_arg < nr_args) {
                 if (cur_arg->protocol->prepare != NULL)
                     cur_arg->protocol->prepare(cur_arg->protocol_handle,
@@ -303,6 +328,12 @@ int up_operate_console(up_context_t  *ctx,
                     case '8':
                     case '9':
                         select_boot(ctx, args, nr_args, buf[i] - '0');
+                        break;
+                    case 'n':
+                        next_boot(ctx, args, nr_args);
+                        break;
+                    case 'p':
+                        previous_boot(ctx, args, nr_args);
                         break;
                 default:
                     // Literal whatever-it-is.

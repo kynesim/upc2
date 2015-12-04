@@ -39,6 +39,9 @@ upc2 [--help] [--serial <device>] [--log <filename>] <boot-stage>*
                          "grouch", a simple in-house protocol, and
                          "xmodem", the venerable XMODEM protocol.
                          The protocol defaults to "grouch".
+    --defer              Drop into console mode to allow user
+                         intervention.  Upload is continued by the
+                         escape sequence `C-a c`
 ```
 
 Baud rates can be abbreviated with "k" for kilobaud and "m" for
@@ -72,6 +75,11 @@ sequences beginning with a `C-a`:
  *  `C-a x`   Quits upc2
  *  `C-a h`   Prints a console help message
  *  `C-a C-a` Sends a C-a through the serial connection
+ *  `C-a l`   Lists the boot stages
+ *  `C-a c`   Continues a deferred upload (see `--defer` above)
+ *  `C-a <digit>`  Selects the boot stage numbered `<digit>` when in console mode.  Does not immediately start the upload.
+ *  `C-a n`   Selects the next boot stage when in console mode.
+ *  `C-a p`   Selects the previous boot stage when in console mode.
 
 Other escape sequences may be added as needed, so users should not
 expect `C-a <key>` to send `<key>` to the serial connection without
@@ -80,5 +88,6 @@ checking.  Traps have been laid for the excessively bold.
 
 <rrw@kynesim.co.uk>
 2015-12-01
+
 <rhodri@Kynesim.co.uk>
 2015-12-02

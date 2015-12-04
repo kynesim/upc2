@@ -57,7 +57,7 @@ static int up_bio_serial_set_baud(up_bio_t *bio, int baud) {
     {
         struct termios tios;
 
-        printf("[[ Changing baud rate to %d]]\n", baud);
+        printf("[[ Changing baud rate to %d ]]\n", baud);
         sleep(1); /* Allow drainage */
 
         tcgetattr(handle->serial_fd, &tios);
