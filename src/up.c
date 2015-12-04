@@ -31,6 +31,10 @@ static void list_boot_stages(up_context_t  *ctx,
 static void continue_boot(up_context_t  *upc,
                           up_load_arg_t *args,
                           int            nr_args);
+static void select_boot(up_context_t  *upc,
+                        up_load_arg_t *args,
+                        int            nr_args,
+                        int            selection);
 
 static void console_help(up_context_t *upc) {
     utils_safe_printf(upc,
@@ -42,6 +46,7 @@ static void console_help(up_context_t *upc) {
                       "C-a h                This help message\n"
                       "C-a l                List the boot stages\n"
                       "C-a c                Continue paused boot\n"
+                      "C-a <digit>          Select boot stage <digit>\n"
                       "C-a x                Quit.\n"
                       "C-a C-a              Literal C-a \n"
                       "C-a <anything else>  Spiders?\n"
@@ -91,6 +96,42 @@ static void continue_boot(up_context_t  *upc,
         utils_safe_printf(upc, "[[ No upload to continue ]]\n");
     else
         utils_safe_printf(upc, "[[ Continuing ]]\n");
+}
+
+static void select_boot(up_context_t  *upc,
+                        up_load_arg_t *args,
+                        int            nr_args,
+                        int            selection)
+{
+    if (!upc->console_mode)
+        return;
+    if (upc->cur_arg == selection)
+    {
+        utils_safe_printf(upc, "[[ Boot stage %d: %s %s @ %d ]]\n",
+                          selection,
+                          args[selection].protocol->name,
+                          NAME_MAYBE_NULL(args[selection].file_name),
+                          args[selection].baud);
+        return;
+    }
+
+    /* Complete stage upc->cur_arg */
+    if (args[upc->cur_arg].protocol->complete != NULL)
+        args[upc->cur_arg].protocol->complete(
+            args[upc->cur_arg].protocol_handle,
+            upc, &args[upc->cur_arg]);
+
+    upc->cur_arg = selection;
+    utils_safe_printf(upc, "[[ Boot stage %d: %s %s @ %d ]]\n",
+                      selection,
+                      args[selection].protocol->name,
+                      NAME_MAYBE_NULL(args[selection].file_name),
+                      args[selection].baud);
+
+    /* Prepare stage selection */
+    if (args[selection].protocol->prepare != NULL)
+        args[selection].protocol->prepare(args[selection].protocol_handle,
+                                          upc, &args[selection]);
 }
 
 
@@ -250,6 +291,18 @@ int up_operate_console(up_context_t  *ctx,
                         break;
                     case 'x':
                         ret = -1;
+                        break;
+                    case '0':
+                    case '1':
+                    case '2':
+                    case '3':
+                    case '4':
+                    case '5':
+                    case '6':
+                    case '7':
+                    case '8':
+                    case '9':
+                        select_boot(ctx, args, nr_args, buf[i] - '0');
                         break;
                 default:
                     // Literal whatever-it-is.
