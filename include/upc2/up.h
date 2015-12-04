@@ -23,11 +23,6 @@ typedef struct up_context_struct {
     /** I/O handle for the interface we are using */
     up_bio_t *bio;
 
-    /** Grouch FSM state; > 0 are real statues, < 0 are used by the
-     * protocol machine
-     */
-    int grouchfsm;
-
     /** Current upload file being processed */
     int cur_arg;
 
@@ -51,7 +46,7 @@ typedef struct up_context_struct {
 } up_context_t;
 
 
-
+/* Forward declaration */
 typedef struct up_load_arg_struct up_load_arg_t;
 
 typedef struct up_protocol_struct {

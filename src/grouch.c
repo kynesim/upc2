@@ -3,6 +3,7 @@
 
 #include <stdio.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 #include <errno.h>
 #include <sys/types.h>
@@ -14,6 +15,10 @@
 
 #define NAME_MAYBE_NULL(n) (((n) == NULL) ? "(no file name)" : (n))
 
+static void *init_grouch(void);
+static int prepare_grouch(void          *h,
+                          up_context_t  *ctx,
+                          up_load_arg_t *arg);
 /* Attempts to start grouchloading given a buffer of serial input.
  * Returns 0 if the "*LOAD*" cue has not yet been seen, -1 on error or
  * 1 if the grouchload has been completed successfully.
@@ -23,16 +28,41 @@ static int maybe_grouch(void          *h,
                         up_load_arg_t *arg,
                         const uint8_t *buf,
                         int            rv);
+static int shutdown_grouch(void *h, up_context_t *ctx);
 
 
 const up_protocol_t grouch_protocol = {
     "grouch",
-    NULL,
-    utils_protocol_set_baud,
+    init_grouch,
+    prepare_grouch,
     maybe_grouch,
     NULL,
-    NULL
+    shutdown_grouch
 };
+
+
+static void *init_grouch(void)
+{
+    return malloc(sizeof(int));
+}
+
+
+static int shutdown_grouch(void *h, up_context_t *ctx)
+{
+    free(h);
+    return 0;
+}
+
+
+int prepare_grouch(void          *h,
+                   up_context_t  *ctx,
+                   up_load_arg_t *arg)
+{
+    int *p_fsm = (int *)h;
+
+    *p_fsm = 0;
+    return utils_protocol_set_baud(h, ctx, arg);
+}
 
 
 static int grouch(up_context_t *upc, up_load_arg_t *arg) {
@@ -142,6 +172,7 @@ static int maybe_grouch(void          *h,
     static const char *cue = "*LOAD*";
     static const int cuelen = 6;
     int x;
+    int *p_fsm = (int *)h;
 
     for (x = 0; x < rv; ++x)
     {
@@ -151,10 +182,10 @@ static int maybe_grouch(void          *h,
         if (!c) continue;
 
         //  printf("f = %d c = '%c' (%d)\n", ctx->grouchfsm, c, c);
-        if (cue[ctx->grouchfsm] == c)
+        if (cue[*p_fsm] == c)
         {
-            ++ctx->grouchfsm;
-            if (ctx->grouchfsm == cuelen)
+            ++(*p_fsm);
+            if (*p_fsm == cuelen)
             {
                 // Got our cue! Go do it
                 int rv;
@@ -166,7 +197,7 @@ static int maybe_grouch(void          *h,
         }
         else
         {
-            ctx->grouchfsm = (cue[0] == c ? 1 : 0);
+            *p_fsm = (cue[0] == c ? 1 : 0);
         }
     }
     // Still hunting.

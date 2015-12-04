@@ -259,6 +259,12 @@ int main(int argn, char *args[]) {
                     protocols[0].protocol->init != NULL)
                 {
                     protocols[0].handle = protocols[0].protocol->init();
+                    if (protocols[0].handle == NULL)
+                    {
+                        fprintf(stderr, "Error initialising %s\n",
+                                protocols[0].protocol->name);
+                        return 1;
+                    }
                 }
                 up_args[i].protocol_handle = protocols[0].handle;
             }
@@ -488,7 +494,15 @@ static up_parse_protocol_t *parse_protocol(const char *name)
         {
             /* This is the protocol we want */
             if (p->handle == NULL && p->protocol->init != NULL)
+            {
                 p->handle = p->protocol->init();
+                if (p->handle == NULL)
+                {
+                    fprintf(stderr, "Error initialising %s\n",
+                            p->protocol->name);
+                    return NULL;
+                }
+            }
             return p;
         }
     }

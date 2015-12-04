@@ -20,8 +20,6 @@
 
 #include "upc2/up.h"
 #include "upc2/utils.h"
-#include "upc2/grouch.h"
-#include "upc2/xmodem.h"
 
 
 static void groan_with(up_context_t *ctx, int which);
@@ -92,7 +90,6 @@ int up_start_console(up_context_t *ctx, int tty_fd) {
     ctx->tc = t;
     ctx->control_mode = 0;
     ctx->cur_arg = 0;
-    ctx->grouchfsm = -2;
     cfmakeraw(&t);
     /* Don't generate SIGINT - it is normal input for our slave device */
     t.c_lflag &= ~ISIG;
@@ -147,11 +144,7 @@ int up_operate_console(up_context_t  *ctx,
 
     /* Run protocol state machines */
     if (ctx->cur_arg < nr_args) {
-        if (ctx->grouchfsm == -2) {
-            // Just starting. Switch baud.
-            ctx->grouchfsm = 0;
-        }
-        else if (cur_arg->fd > -1) {
+        if (cur_arg->fd > -1) {
             // Run the state machine.
             ret = cur_arg->protocol->transfer(cur_arg->protocol_handle,
                                               ctx, cur_arg,
@@ -168,7 +161,6 @@ int up_operate_console(up_context_t  *ctx,
                                                 ctx, cur_arg);
                 ++ctx->cur_arg;
                 cur_arg = &args[ctx->cur_arg];
-                ctx->grouchfsm = -1;
                 if (ctx->cur_arg < nr_args) {
                     if (cur_arg->protocol->prepare != NULL)
                         cur_arg->protocol->prepare(cur_arg->protocol_handle,
