@@ -10,20 +10,23 @@ multi-stage boots.
 Usage
 -----
 ```
-upc2 [--help] [--serial <device>] [--log <filename>] <boot-stage>* [<baud>]
+upc2 [--help] [--serial <device>] [--log <filename>] <boot-stage>*
+        [--script <filename>] [<baud>]
 
-  --help             Outputs a syntax help message.
-  --serial <device>  Specifies the serial device to communicate with,
-                     by default "/dev/ttyUSB0".
-  --log <filename>   Logs output from the serial connection to the
-                     named file.  Does not log console input sent to
-                     the serial connection.  Protocol handshakes may
-                     be omitted depending on the protocol.
-  <baud>             The baud rate used for serial communications once
-                     all uploads have been completed.  If omitted, a
-                     baud rate of 115200 will be used.
-  <boot-stage>       Stages of booting are specified by a sequence of
-                     command-line arguments:
+  --help              Outputs a syntax help message.
+  --serial <device>   Specifies the serial device to communicate with,
+                      by default "/dev/ttyUSB0".
+  --log <filename>    Logs output from the serial connection to the
+                      named file.  Does not log console input sent to
+                      the serial connection.  Protocol handshakes may
+                      be omitted depending on the protocol.
+  --script <filename> Reads the named file as if its contents were more
+                      command-line parameters
+  <baud>              The baud rate used for serial communications once
+                      all uploads have been completed.  If omitted, a
+                      baud rate of 115200 will be used.
+  <boot-stage>        Stages of booting are specified by a sequence of
+                      command-line arguments:
     --grouch <filename>  The file to upload.  This is the first
                          argument of any boot stage.
     --baud <baud>        The serial baud rate to use for this boot
