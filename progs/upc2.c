@@ -47,7 +47,7 @@ up_parse_protocol_t protocols[] = {
 
 /* Dummy protocol to use for the console arg */
 const up_protocol_t dummy_protocol = {
-    "dummy",
+    "console",
     NULL,
     utils_protocol_set_baud,
     NULL,

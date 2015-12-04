@@ -16,8 +16,6 @@
 #include <termios.h>
 #include "up_bio.h"
 
-//#define UP_PROTOCOL_GROUCH  (0)
-//#define UP_PROTOCOL_XMODEM  (1)
 
 typedef struct up_context_struct {
     /** I/O handle for the interface we are using */

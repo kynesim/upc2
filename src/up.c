@@ -21,9 +21,13 @@
 #include "upc2/up.h"
 #include "upc2/utils.h"
 
+#define NAME_MAYBE_NULL(n) (((n) == NULL) ? "(no file name)" : (n))
 
 static void groan_with(up_context_t *ctx, int which);
 static void console_help(up_context_t *upc);
+static void list_boot_stages(up_context_t  *ctx,
+                             up_load_arg_t *args,
+                             int            nr_args);
 
 static void console_help(up_context_t *upc) {
     utils_safe_printf(upc,
@@ -33,6 +37,7 @@ static void console_help(up_context_t *upc) {
                       "Console help\n"
                       "\n"
                       "C-a h                This help message\n"
+                      "C-a l                List the boot stages\n"
                       "C-a x                Quit.\n"
                       "C-a C-a              Literal C-a \n"
                       "C-a <anything else>  Spiders?\n"
@@ -50,6 +55,23 @@ static void groan_with(up_context_t *upc, int which) {
     };
     int p = which % (sizeof(groans)/sizeof(char *));
     utils_safe_printf(upc, groans[p]);
+}
+
+static void list_boot_stages(up_context_t  *upc,
+                             up_load_arg_t *args,
+                             int            nr_args)
+{
+    int i;
+
+    utils_safe_printf(upc, "\n");
+    for (i = 0; i < nr_args; i++)
+    {
+        utils_safe_printf(upc, "[[ %c Boot stage %d: %s %s @ %d ]]\n",
+                          (i == upc->cur_arg) ? '*' : ' ',
+                          i, args[i].protocol->name,
+                          NAME_MAYBE_NULL(args[i].file_name),
+                          args[i].baud);
+    }
 }
 
 
@@ -113,6 +135,8 @@ int up_operate_console(up_context_t  *ctx,
     int ret = 0;
     struct pollfd fds[2];
     up_load_arg_t *cur_arg = &args[ctx->cur_arg];
+    int in_xfer_mode = (ctx->cur_arg < nr_args) &&
+        (cur_arg->fd > -1);
 
     fds[0].revents = fds[1].revents = 0;
     fds[0].fd = ctx->bio->poll_fd(ctx->bio);
@@ -143,32 +167,35 @@ int up_operate_console(up_context_t  *ctx,
     }
 
     /* Run protocol state machines */
-    if (ctx->cur_arg < nr_args) {
-        if (cur_arg->fd > -1) {
-            // Run the state machine.
-            ret = cur_arg->protocol->transfer(cur_arg->protocol_handle,
-                                              ctx, cur_arg,
-                                              buf, rv);
+    if (in_xfer_mode) {
+        // Run the state machine.
+        ret = cur_arg->protocol->transfer(cur_arg->protocol_handle,
+                                          ctx, cur_arg,
+                                          buf, rv);
 
-            // If ret < 0, something went wrong
-            if (ret < 0)
-                goto end;
-            // If ret > 0, we've terminated. Move to the next argument and
-            // set baud.
-            if (ret > 0) {
-                if (cur_arg->protocol->complete != NULL)
-                    cur_arg->protocol->complete(cur_arg->protocol_handle,
-                                                ctx, cur_arg);
-                ++ctx->cur_arg;
-                cur_arg = &args[ctx->cur_arg];
-                if (ctx->cur_arg < nr_args) {
-                    if (cur_arg->protocol->prepare != NULL)
-                        cur_arg->protocol->prepare(cur_arg->protocol_handle,
-                                                   ctx, cur_arg);
-                }
+        // If ret < 0, something went wrong
+        if (ret < 0)
+            goto end;
+        // If ret > 0, we've terminated. Move to the next argument and
+        // prep the protocol.
+        if (ret > 0) {
+            if (cur_arg->protocol->complete != NULL)
+                cur_arg->protocol->complete(cur_arg->protocol_handle,
+                                            ctx, cur_arg);
+            cur_arg = &args[++ctx->cur_arg];
+            utils_safe_printf(ctx, "[[ Boot stage %d: %s %s @ %d ]]\n",
+                              ctx->cur_arg,
+                              cur_arg->protocol->name,
+                              NAME_MAYBE_NULL(cur_arg->file_name),
+                              cur_arg->baud);
+            if (ctx->cur_arg < nr_args) {
+                if (cur_arg->protocol->prepare != NULL)
+                    cur_arg->protocol->prepare(cur_arg->protocol_handle,
+                                               ctx, cur_arg);
             }
         }
     }
+
 
     // Anything from the terminal?
     /* NB: unlike utils_check_critical_control(), this passes data
@@ -191,6 +218,9 @@ int up_operate_console(up_context_t  *ctx,
                         break;
                     case 'g':
                         groan_with(ctx, groan++);
+                        break;
+                    case 'l':
+                        list_boot_stages(ctx, args, nr_args);
                         break;
                     case 'x':
                         ret = -1;
@@ -243,6 +273,10 @@ int up_become_console(up_context_t *ctx, up_load_arg_t *args, int nr_args) {
     /* Prep the first protocol handler */
     if (args[0].protocol->prepare != NULL)
         args[0].protocol->prepare(args[0].protocol_handle, ctx, &args[0]);
+    utils_safe_printf(ctx, "[[ Boot stage 0: %s %s @ %d ]]\n",
+                      args[0].protocol->name,
+                      NAME_MAYBE_NULL(args[0].file_name),
+                      args[0].baud);
     do {
         rv = up_operate_console(ctx, args, nr_args);
     } while (rv >= 0);
