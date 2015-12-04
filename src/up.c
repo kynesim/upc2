@@ -115,6 +115,7 @@ int up_operate_console(up_context_t  *ctx,
     int rv;
     int ret = 0;
     struct pollfd fds[2];
+    up_load_arg_t *cur_arg = &args[ctx->cur_arg];
 
     fds[0].revents = fds[1].revents = 0;
     fds[0].fd = ctx->bio->poll_fd(ctx->bio);
@@ -153,12 +154,9 @@ int up_operate_console(up_context_t  *ctx,
         }
         else if (args[ctx->cur_arg].fd > -1) {
             // Run the state machine.
-            ret = args[ctx->cur_arg].protocol->transfer(
-                args[ctx->cur_arg].protocol_handle,
-                ctx,
-                &args[ctx->cur_arg],
-                buf,
-                rv);
+            ret = cur_arg->protocol->transfer(cur_arg->protocol_handle,
+                                              ctx, cur_arg,
+                                              buf, rv);
 
             // If ret < 0, something went wrong
             if (ret < 0)
@@ -166,20 +164,17 @@ int up_operate_console(up_context_t  *ctx,
             // If ret > 0, we've terminated. Move to the next argument and
             // set baud.
             if (ret > 0) {
-                if (args[ctx->cur_arg].protocol->complete != NULL)
-                    args[ctx->cur_arg].protocol->complete(
-                        args[ctx->cur_arg].protocol_handle,
-                        ctx,
-                        &args[ctx->cur_arg]);
+                if (cur_arg->protocol->complete != NULL)
+                    cur_arg->protocol->complete(cur_arg->protocol_handle,
+                                                ctx, cur_arg);
                 ++ctx->cur_arg;
+                cur_arg = &args[ctx->cur_arg];
                 ctx->grouchfsm = -1;
                 if (ctx->cur_arg < nr_args) {
-                    ctx->bio->set_baud(ctx->bio, args[ctx->cur_arg].baud);
-                    if (args[ctx->cur_arg].protocol->prepare != NULL)
-                        args[ctx->cur_arg].protocol->prepare(
-                            args[ctx->cur_arg].protocol_handle,
-                            ctx,
-                            &args[ctx->cur_arg]);
+                    ctx->bio->set_baud(ctx->bio, cur_arg->baud);
+                    if (cur_arg->protocol->prepare != NULL)
+                        cur_arg->protocol->prepare(cur_arg->protocol_handle,
+                                                   ctx, cur_arg);
                 }
             }
         }
@@ -261,6 +256,7 @@ int up_become_console(up_context_t *ctx, up_load_arg_t *args, int nr_args) {
     do {
         rv = up_operate_console(ctx, args, nr_args);
     } while (rv >= 0);
+    /* Wind down the last protocol handler */
     if (ctx->cur_arg < nr_args &&
         args[ctx->cur_arg].protocol->complete != NULL)
     {
