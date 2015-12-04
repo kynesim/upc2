@@ -6,14 +6,6 @@
 
 #include "upc2/up.h"
 
-/* Sends the relevant file using the XModem protocol.
- *
- * Returns a negative number on failure/abort, or 1 once the
- * transfer is complete.
- */
-extern int xmodem_boot(up_context_t *ctx, up_load_arg_t *arg);
+extern const up_protocol_t xmodem_protocol;
 
 #endif
-
-
-/* End file */

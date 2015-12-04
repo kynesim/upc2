@@ -153,28 +153,33 @@ int up_operate_console(up_context_t  *ctx,
         }
         else if (args[ctx->cur_arg].fd > -1) {
             // Run the state machine.
-            ret = 0;
-            switch (args[ctx->cur_arg].protocol) {
-                case UP_PROTOCOL_GROUCH:
-                    ret = maybe_grouch(ctx, &args[ctx->cur_arg], buf, rv);
-                    break;
-                case UP_PROTOCOL_XMODEM:
-                    ret = xmodem_boot(ctx, &args[ctx->cur_arg]);
-                    break;
-                default:
-                    // Nothing.
-                    break;
-            }
+            ret = args[ctx->cur_arg].protocol->transfer(
+                args[ctx->cur_arg].protocol_handle,
+                ctx,
+                &args[ctx->cur_arg],
+                buf,
+                rv);
+
             // If ret < 0, something went wrong
             if (ret < 0)
                 goto end;
             // If ret > 0, we've terminated. Move to the next argument and
             // set baud.
             if (ret > 0) {
+                if (args[ctx->cur_arg].protocol->complete != NULL)
+                    args[ctx->cur_arg].protocol->complete(
+                        args[ctx->cur_arg].protocol_handle,
+                        ctx,
+                        &args[ctx->cur_arg]);
                 ++ctx->cur_arg;
                 ctx->grouchfsm = -1;
                 if (ctx->cur_arg < nr_args) {
                     ctx->bio->set_baud(ctx->bio, args[ctx->cur_arg].baud);
+                    if (args[ctx->cur_arg].protocol->prepare != NULL)
+                        args[ctx->cur_arg].protocol->prepare(
+                            args[ctx->cur_arg].protocol_handle,
+                            ctx,
+                            &args[ctx->cur_arg]);
                 }
             }
         }
@@ -250,9 +255,20 @@ int up_become_console(up_context_t *ctx, up_load_arg_t *args, int nr_args) {
         fprintf(stderr, "up_start_console returned %d\n", rv);
         return rv;
     }
+    /* Prep the first protocol handler */
+    if (args[0].protocol->prepare != NULL)
+        args[0].protocol->prepare(args[0].protocol_handle, ctx, &args[0]);
     do {
         rv = up_operate_console(ctx, args, nr_args);
     } while (rv >= 0);
+    if (ctx->cur_arg < nr_args &&
+        args[ctx->cur_arg].protocol->complete != NULL)
+    {
+        args[ctx->cur_arg].protocol->complete(
+            args[ctx->cur_arg].protocol_handle,
+            ctx,
+            &args[ctx->cur_arg]);
+    }
     r2 = up_finish_console(ctx);
     if (r2 < 0)
         return r2;

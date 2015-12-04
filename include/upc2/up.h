@@ -16,8 +16,8 @@
 #include <termios.h>
 #include "up_bio.h"
 
-#define UP_PROTOCOL_GROUCH  (0)
-#define UP_PROTOCOL_XMODEM  (1)
+//#define UP_PROTOCOL_GROUCH  (0)
+//#define UP_PROTOCOL_XMODEM  (1)
 
 typedef struct up_context_struct {
     /** I/O handle for the interface we are using */
@@ -50,6 +50,37 @@ typedef struct up_context_struct {
     int control_mode;
 } up_context_t;
 
+
+
+typedef struct up_load_arg_struct up_load_arg_t;
+
+typedef struct up_protocol_struct {
+    /** Name of the protocol (for command line parsing) */
+    const char *name;
+
+    /** Initialise protocol at program start, returns opaque handle */
+    void *(*init)(void);
+
+    /** Prepare an individual boot stage */
+    int (*prepare)(void *h, up_context_t *ctx, up_load_arg_t *arg);
+
+    /** Transfer function for a boot stage */
+    int (*transfer)(void          *h,
+                    up_context_t  *ctx,
+                    up_load_arg_t *arg,
+                    /* Buffer of bytes read in from BIO */
+                    const uint8_t *buf,
+                    /* Number of bytes in buf */
+                    int            buf_bytes);
+
+    /** Complete an individual boot stage */
+    int (*complete)(void *h, up_context_t *ctx, up_load_arg_t *arg);
+
+    /** Close down protocol before quitting */
+    int (*shutdown)(void *h, up_context_t *ctx);
+} up_protocol_t;
+
+
 typedef struct up_load_arg_struct {
     /** Name to upload */
     const char *file_name;
@@ -57,8 +88,11 @@ typedef struct up_load_arg_struct {
     /** fd, < 0 for none */
     int fd;
 
-    /** UP_PROTOCOL_XXX */
-    int protocol;
+    /** Protocol object for transfer */
+    const up_protocol_t *protocol;
+
+    /** Handle for protocol */
+    void *protocol_handle;
 
     /** Baud rate */
     int baud;

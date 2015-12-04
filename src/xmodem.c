@@ -50,6 +50,22 @@
 #define XMODEM_USE_CRC16 (0x43)
 #define XMODEM_DONE (0x04)
 
+static int xmodem_boot(void          *h,
+                       up_context_t  *ctx,
+                       up_load_arg_t *arg,
+                       const uint8_t *buf,
+                       int            buf_bytes);
+
+
+const up_protocol_t xmodem_protocol = {
+    "xmodem",
+    NULL,
+    NULL,
+    xmodem_boot,
+    NULL,
+    NULL
+};
+
 
 static int send_byte(up_context_t *upc, const uint8_t c);
 static int get_byte(up_context_t *upc);
@@ -334,7 +350,11 @@ static int send_byte(up_context_t *upc, const uint8_t c)
     return (rv < 0) ? rv : 0;
 }
 
-int xmodem_boot(up_context_t *ctx, up_load_arg_t *arg)
+static int xmodem_boot(void          *h,
+                       up_context_t  *ctx,
+                       up_load_arg_t *arg,
+                       const uint8_t *serial_in_buf,
+                       int            buf_bytes)
 {
     off_t of;
     uint32_t nr_bytes;

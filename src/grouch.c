@@ -14,6 +14,26 @@
 
 #define NAME_MAYBE_NULL(n) (((n) == NULL) ? "(no file name)" : (n))
 
+/* Attempts to start grouchloading given a buffer of serial input.
+ * Returns 0 if the "*LOAD*" cue has not yet been seen, -1 on error or
+ * 1 if the grouchload has been completed successfully.
+ */
+static int maybe_grouch(void          *h,
+                        up_context_t  *ctx,
+                        up_load_arg_t *arg,
+                        const uint8_t *buf,
+                        int            rv);
+
+
+const up_protocol_t grouch_protocol = {
+    "grouch",
+    NULL,
+    NULL,
+    maybe_grouch,
+    NULL,
+    NULL
+};
+
 
 static int grouch(up_context_t *upc, up_load_arg_t *arg) {
     off_t len;
@@ -113,10 +133,11 @@ static int grouch(up_context_t *upc, up_load_arg_t *arg) {
 }
 
 
-int maybe_grouch(up_context_t  *ctx,
-                 up_load_arg_t *arg,
-                 const uint8_t *buf,
-                 int            rv)
+static int maybe_grouch(void          *h,
+                        up_context_t  *ctx,
+                        up_load_arg_t *arg,
+                        const uint8_t *buf,
+                        int            rv)
 {
     static const char *cue = "*LOAD*";
     static const int cuelen = 6;

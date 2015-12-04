@@ -13,9 +13,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <getopt.h>
-#include <upc2/up.h>
-#include <upc2/up_bio_serial.h>
-#include <upc2/utils.h>
 #include <time.h>
 #include <sys/time.h>
 #include <sys/fcntl.h>
@@ -25,9 +22,35 @@
 #include <sys/errno.h>
 #include <string.h>
 
+#include "upc2/up.h"
+#include "upc2/up_bio_serial.h"
+#include "upc2/grouch.h"
+#include "upc2/xmodem.h"
+#include "upc2/utils.h"
+
 #define MAX_ARGS 32
 #define MAX_SCRIPTS 10
 #define DEBUG0 1
+
+/* Structure for the protocol tables */
+typedef struct up_parse_protocol_struct
+{
+    const up_protocol_t *protocol;
+    void                *handle;
+} up_parse_protocol_t;
+
+up_parse_protocol_t protocols[] = {
+    { &grouch_protocol, NULL },
+    { &xmodem_protocol, NULL },
+    { NULL, NULL }
+};
+
+/* Dummy protocol to use for the console arg */
+const up_protocol_t dummy_protocol = {
+    "dummy",
+    NULL, NULL, NULL, NULL, NULL
+};
+
 
 /* Structure to allow recursing into scripts */
 typedef struct up_parse_stack_struct
@@ -52,6 +75,7 @@ struct option options[] = {
 
 static void usage(void);
 static char *read_script(const char *filename, int *pargn, char ***pargs);
+static up_parse_protocol_t *parse_protocol(const char *name);
 
 int main(int argn, char *args[]) {
     up_context_t *upc;
@@ -65,6 +89,7 @@ int main(int argn, char *args[]) {
     int cur_script = 0;
     const char *serial_port = "/dev/ttyUSB0";
     int option;
+    up_parse_protocol_t *selected_protocol;
 
     memset(&up_args, '\0', sizeof(up_args));
     up_args[0].fd = -1;
@@ -148,17 +173,17 @@ int main(int argn, char *args[]) {
                                 optarg);
                         return 7;
                     }
-                    if (!strcmp(optarg, "grouch"))
-                        up_args[cur_arg].protocol = UP_PROTOCOL_GROUCH;
-                    else if (!strcmp(optarg, "xmodem"))
-                        up_args[cur_arg].protocol = UP_PROTOCOL_XMODEM;
-                    else
+                    selected_protocol = parse_protocol(optarg);
+                    if (selected_protocol == NULL)
                     {
-                        fprintf(stderr, "Invalid protocol specified:"
-                                " must be 'grouch' or 'xmodem'\n");
+                        fprintf(stderr, "Invalid protocol specified\n");
                         usage();
                         return 5;
                     }
+                    up_args[cur_arg].protocol =
+                        selected_protocol->protocol;
+                    up_args[cur_arg].protocol_handle =
+                        selected_protocol->handle;
                     break;
 
                 case 'x':
@@ -214,14 +239,26 @@ int main(int argn, char *args[]) {
     ++cur_arg;
     up_args[cur_arg].fd = -1;
     up_args[cur_arg].baud = baud;
+    up_args[cur_arg].protocol = &dummy_protocol;
 
 
-    /* Now open all the files .. */
+    /* Now open all the files and do the protocol preparation */
     {
         int i;
 
         for (i = 0; i < cur_arg; ++i)
         {
+            if (up_args[i].protocol == NULL)
+            {
+                up_args[i].protocol = protocols[0].protocol;
+                if (protocols[0].handle == NULL &&
+                    protocols[0].protocol->init != NULL)
+                {
+                    protocols[0].handle = protocols[0].protocol->init();
+                }
+                up_args[i].protocol_handle = protocols[0].handle;
+            }
+
             if (up_args[i].file_name)
             {
                 up_args[i].fd = open(up_args[i].file_name, O_RDONLY);
@@ -238,10 +275,10 @@ int main(int argn, char *args[]) {
             }
 
 #if DEBUG0
-            printf("arg[%d] = { file_name = %s, fd = %d, protocol = %d,"
+            printf("arg[%d] = { file_name = %s, fd = %d, protocol = %s,"
                    " baud = %d }\n",
                    i, up_args[i].file_name, up_args[i].fd,
-                   up_args[i].protocol, up_args[i].baud);
+                   up_args[i].protocol->name, up_args[i].baud);
 #endif
 
         }
@@ -286,6 +323,9 @@ int main(int argn, char *args[]) {
                 close(up_args[i].fd);
                 free((void *)up_args[i].file_name);
             }
+            if (up_args[i].protocol->shutdown != NULL)
+                up_args[i].protocol->shutdown(up_args[i].protocol_handle,
+                                              upc);
         }
     }
 
@@ -431,4 +471,23 @@ static char *read_script(const char *filename, int *pargn, char ***pargs)
     *pargs = argv;
     *pargn = argc;
     return buffer;
+}
+
+
+static up_parse_protocol_t *parse_protocol(const char *name)
+{
+    up_parse_protocol_t *p;
+
+    for (p = &protocols[0]; p->protocol != NULL; p++)
+    {
+        if (!strcmp(name, p->protocol->name))
+        {
+            /* This is the protocol we want */
+            if (p->handle == NULL && p->protocol->init != NULL)
+                p->handle = p->protocol->init();
+            return p;
+        }
+    }
+
+    return NULL;
 }
