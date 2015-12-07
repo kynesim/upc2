@@ -387,6 +387,7 @@ int up_become_console(up_context_t *ctx, up_load_arg_t *args, int nr_args) {
                       args[0].protocol->name,
                       NAME_MAYBE_NULL(args[0].file_name),
                       args[0].baud);
+    ctx->console_mode = (args[0].fd < 0 || args[0].deferred);
     do {
         rv = up_operate_console(ctx, args, nr_args);
     } while (rv >= 0);
