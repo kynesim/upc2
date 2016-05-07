@@ -42,6 +42,7 @@ typedef struct up_parse_protocol_struct
 up_parse_protocol_t protocols[] = {
     { &grouch_protocol, NULL },
     { &xmodem_protocol, NULL },
+    { &xmodem128_protocol, NULL },
     { NULL, NULL }
 };
 
@@ -367,10 +368,13 @@ static void usage(void)
            "\t--log <file> \t\tAppend all console input to this file.\n"
            "\t--grouch <filename> \tUpload the given file.\n"
            "\t--baud <rate> \t\tChange baud rate.\n"
-           "\t--protocol <proto> \tChange protocol for upload.  "
+           "\t--defer \t\t Defer this boot stage until invoked by eg. C-a n \n"
+           "\t--protocol <proto> \tChange protocol for upload.  \n"
            "Valid protocols:\n"
            "\t\tgrouch \t(default)\n"
            "\t\txmodem\n"
+           "\t\txmodem128 - this is like xmodem but forces the block size \n"
+           "                to 128, as required by Telegesis Zigbee modules\n"
            "\n"
            "You may specify '1m' as your baud rate for 1Mbaud.\n"
            "The final <baud>, if specified, is the baud rate to switch"

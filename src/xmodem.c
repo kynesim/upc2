@@ -56,12 +56,34 @@ static int xmodem_boot(void          *h,
                        const uint8_t *buf,
                        int            buf_bytes);
 
+static int xmodem128_boot(void          *h,
+                       up_context_t  *ctx,
+                       up_load_arg_t *arg,
+                       const uint8_t *buf,
+                       int            buf_bytes);
+
+static int xmodem_transfer(void          *h,
+                           up_context_t  *ctx,
+                           up_load_arg_t *arg,
+                           const uint8_t *buf,
+                           int            buf_bytes,
+                           int force_128);
+
 
 const up_protocol_t xmodem_protocol = {
     "xmodem",
     NULL,
     utils_protocol_set_baud,
     xmodem_boot,
+    NULL,
+    NULL
+};
+
+const up_protocol_t xmodem128_protocol = {
+    "xmodem128",
+    NULL,
+    utils_protocol_set_baud,
+    xmodem128_boot,
     NULL,
     NULL
 };
@@ -138,12 +160,18 @@ static uint32_t load_buffer(uint8_t *tx_buffer,
     if ((blksz && blksz == XBUFFER_SHORT_DATA_BYTES) ||
         (!blksz && (image_bytes <= XBUFFER_SHORT_DATA_BYTES)))
     {
-        memcpy(&tx_buffer[XBUFFER_HEADER_BYTES], image_buffer, image_bytes);
-        memset(&tx_buffer[XBUFFER_HEADER_BYTES] + image_bytes,
+        int take = XBUFFER_SHORT_DATA_BYTES;
+        if (image_bytes < take) { take = image_bytes; }
+#if DEBUG0
+        printf("load_buffer: Case A: %d \n", take);
+#endif
+
+        memcpy(&tx_buffer[XBUFFER_HEADER_BYTES], image_buffer, take);
+        memset(&tx_buffer[XBUFFER_HEADER_BYTES] + take, 
                XMODEM_PAD,
-               XBUFFER_SHORT_DATA_BYTES - image_bytes);
+               XBUFFER_SHORT_DATA_BYTES - take );
         tx_buffer[XBUFFER_TYPE_OFS] = XMODEM_TYPE_SHORT;
-        return image_bytes;
+        return take;
     }
     else if (image_bytes <= XBUFFER_DATA_BYTES)
     {
@@ -151,6 +179,9 @@ static uint32_t load_buffer(uint8_t *tx_buffer,
         memset(&tx_buffer[XBUFFER_HEADER_BYTES] + image_bytes,
                XMODEM_PAD,
                XBUFFER_DATA_BYTES - image_bytes);
+#if DEBUG0
+        printf("load_buffer: Case B: %d \n", image_bytes);
+#endif
         tx_buffer[XBUFFER_TYPE_OFS] = XMODEM_TYPE_LONG;
         return image_bytes;
     }
@@ -159,13 +190,16 @@ static uint32_t load_buffer(uint8_t *tx_buffer,
            image_buffer,
            XBUFFER_DATA_BYTES);
     tx_buffer[XBUFFER_TYPE_OFS] = XMODEM_TYPE_LONG;
+#if DEBUG0
+    printf("load_buffer: Case C: %d \n", XBUFFER_DATA_BYTES);
+#endif
 
     return XBUFFER_DATA_BYTES;
 }
 
 
 static int send_buffer(up_context_t *ctx, uint8_t *buffer,
-                        int use_crc16)
+                       int use_crc16)
 {
     int length = (buffer[XBUFFER_TYPE_OFS] == XMODEM_TYPE_SHORT) ?
         XBUFFER_SHORT_BYTES : XBUFFER_BYTES;
@@ -193,7 +227,8 @@ static int send_buffer(up_context_t *ctx, uint8_t *buffer,
 
 static int xmodem_go(up_context_t  *ctx,
                      const uint8_t *boot_image,
-                     const ssize_t  ib)
+                     const ssize_t  ib,
+                     const int force_128)
 {
     int done = 0;
     int rx_byte;
@@ -210,7 +245,10 @@ static int xmodem_go(up_context_t  *ctx,
     // Set blksz non-zero to allow variable block sizes.
     // blksz = (image_bytes <= XBUFFER_SHORT_DATA_BYTES) ?
     //     XBUFFER_SHORT_DATA_BYTES : XBUFFER_DATA_BYTES;
-    blksz = 0;
+    blksz = force_128 ? XBUFFER_SHORT_DATA_BYTES : 0;
+#if DEBUG0
+    printf("blksz = %d \n", blksz);
+#endif
 
     /* Pre-load the buffer */
     bytes_taken = load_buffer(buffer, boot_image, image_bytes, blksz, blk);
@@ -248,6 +286,7 @@ static int xmodem_go(up_context_t  *ctx,
         else
         {
             uint8_t c = rx_byte;
+            printf("c = %02x \n", c);
             utils_safe_write(ctx->ttyfd, &c, 1);
         }
     }
@@ -291,6 +330,7 @@ static int xmodem_go(up_context_t  *ctx,
             bytes_taken = load_buffer(buffer,
                                       boot_image,
                                       image_bytes, blksz,  blk);
+            printf("blksz[2] = %d \n", blksz);
             ++blk;
             image_bytes -= bytes_taken;
             boot_image += bytes_taken;
@@ -353,8 +393,27 @@ static int send_byte(up_context_t *upc, const uint8_t c)
 static int xmodem_boot(void          *h,
                        up_context_t  *ctx,
                        up_load_arg_t *arg,
-                       const uint8_t *serial_in_buf,
-                       int            buf_bytes)
+                       const uint8_t *buf,
+                       int            buf_bytes) {
+    return xmodem_transfer(h, ctx, arg, buf, buf_bytes, 0);
+}
+
+static int xmodem128_boot(void          *h,
+                       up_context_t  *ctx,
+                       up_load_arg_t *arg,
+                       const uint8_t *buf,
+                          int            buf_bytes) {
+    return xmodem_transfer(h, ctx, arg, buf, buf_bytes, 1);
+}
+
+
+
+static int xmodem_transfer(void          *h,
+                           up_context_t  *ctx,
+                           up_load_arg_t *arg,
+                           const uint8_t *serial_in_buf,
+                           int            buf_bytes,
+                           int force_128)
 {
     off_t of;
     uint32_t nr_bytes;
@@ -411,7 +470,7 @@ static int xmodem_boot(void          *h,
             done += rv;
         }
     }
-    rv = xmodem_go(ctx, buf, nr_bytes);
+    rv = xmodem_go(ctx, buf, nr_bytes, force_128);
 
 end:
     free(buf);

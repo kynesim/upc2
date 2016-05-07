@@ -7,5 +7,6 @@
 #include "upc2/up.h"
 
 extern const up_protocol_t xmodem_protocol;
+extern const up_protocol_t xmodem128_protocol;
 
 #endif
