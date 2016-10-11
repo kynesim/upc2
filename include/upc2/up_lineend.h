@@ -58,6 +58,8 @@ typedef struct up_translation_table_struct {
 
 
 extern up_translation_table_t *parse_line_end(const char *name);
+extern up_translation_table_t *parse_escape_line_end(uint8_t first,
+                                                     uint8_t second);
 extern int translate_buffer(uint8_t *out_buf,
                             const uint8_t *in_buf,
                             int in_buf_bytes,

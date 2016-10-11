@@ -135,7 +135,7 @@ static uint32_t tn_cr_to_lf(uint8_t in_byte, up_translation_t *trans)
 /* This table must have a "none" entry for the default null translation */
 static up_translation_table_t translation_table[] =
 {
-    /* Cmdline    ^A^L           from_serial           to_serial     */
+    /* Cmdline    ^Ae            from_serial           to_serial     */
     { "crlf2cr", { 'n', 'c' }, { tn_cr_to_crlf, 0 }, { tn_crlf_to_cr, 0 }},
     { "crlf2lf", { 'n', 'l' }, { tn_lf_to_crlf, 0 }, { tn_crlf_to_lf, 0 }},
     { "cr2crlf", { 'c', 'n' }, { tn_crlf_to_cr, 0 }, { tn_cr_to_crlf, 0 }},
@@ -156,6 +156,25 @@ up_translation_table_t *parse_line_end(const char *name)
     for (p = translation_table; p->command_string != NULL; p++)
     {
         if (!strcmp(p->command_string, name))
+        {
+            p->from_serial.state = 0;
+            p->to_serial.state = 0;
+            return p;
+        }
+    }
+    return NULL;
+}
+
+
+up_translation_table_t *parse_escape_line_end(uint8_t first,
+                                              uint8_t second)
+{
+    up_translation_table_t *p;
+
+    for (p = translation_table; p->command_string != NULL; p++)
+    {
+        if (first == p->escape_sequence[0] &&
+            second == p->escape_sequence[1])
         {
             p->from_serial.state = 0;
             p->to_serial.state = 0;

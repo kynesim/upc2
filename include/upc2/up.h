@@ -47,6 +47,9 @@ typedef struct up_context_struct {
 
     /** Pause file transfers */
     int console_mode;
+
+    /** First character after ^Ae combination */
+    uint8_t trn_tag;
 } up_context_t;
 
 

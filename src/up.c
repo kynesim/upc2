@@ -40,7 +40,7 @@ static void select_boot(up_context_t  *upc,
 static void console_help(up_context_t *upc) {
     utils_safe_printf(upc,
                       "\n"
-                      "upc2 0.1 (C) Kynesim Ltd 2012-5\n"
+                      "upc2 0.2 (C) Kynesim Ltd 2012-5\n"
                       "\n"
                       "Console help\n"
                       "\n"
@@ -50,10 +50,18 @@ static void console_help(up_context_t *upc) {
                       "C-a <digit>          Select boot stage <digit>\n"
                       "C-a n                Select next boot stage\n"
                       "C-a p                Select previous boot stage\n"
+                      "C-a e <c1> <c2>      Change line endings\n"
                       "C-a x                Quit.\n"
                       "C-a C-a              Literal C-a \n"
                       "C-a <anything else>  Spiders?\n"
-                      "\n");
+                      "\n"
+                      "The C-a e sequence changes the line end encoding"
+                      " in use.  The two following\ncharacters must be"
+                      " 'l' for LF, 'c' for CR, or 'n' for a CRLF"
+                      " sequence.\n<c1> represents the encoding at the"
+                      " host end, and <c2> represents the encoding\nat"
+                      " the remote end.  For no encoding, use 'C-a e n n'."
+                      "\n\n");
 }
 
 static void groan_with(up_context_t *upc, int which) {
@@ -309,7 +317,27 @@ int up_operate_console(up_context_t  *ctx,
         uint8_t *out_buf = buf + 128; /* Again, use upper buffer space */
 
         for (i = 0; i < rv; ++i) {
-            if (ctx->control_mode) {
+            if (ctx->control_mode == 3) {
+                /* Check if there is a translation entry with this code */
+                up_translation_table_t *trn =
+                    parse_escape_line_end(ctx->trn_tag, buf[i]);
+                if (trn != NULL) {
+                    utils_safe_printf(
+                        ctx,
+                        "! upc2: Line end sequence changed.\n");
+                    ctx->trn = trn;
+                } else {
+                    utils_safe_printf(ctx,
+                                      "! upc2: Unknown line end sequence"
+                                      " %c%c\n",
+                                      ctx->trn_tag, buf[i]);
+                }
+                ctx->control_mode = 0;
+            } else if (ctx->control_mode == 2) {
+                /* First of two characters defining line end */
+                ctx->trn_tag = buf[i];
+                ctx->control_mode = 3;
+            } else if (ctx->control_mode == 1) {
                 static int groan = 0;
 
                 switch (buf[i]) {
@@ -331,6 +359,9 @@ int up_operate_console(up_context_t  *ctx,
                     case 'x':
                         ret = -1;
                         break;
+                    case 'e':
+                        ctx->control_mode = 2;
+                        break;
                     case '0':
                     case '1':
                     case '2':
@@ -349,32 +380,33 @@ int up_operate_console(up_context_t  *ctx,
                     case 'p':
                         previous_boot(ctx, args, nr_args);
                         break;
-                default:
-                    // Literal whatever-it-is.
-                    /* Do put it through the translator */
-                    if (ctx->trn != NULL)
-                    {
-                        uint32_t result =
-                            ctx->trn->to_serial.translate(
-                                buf[i], &ctx->trn->to_serial);
-
-                        while (result & TN_CALL_AGAIN)
+                    default:
+                        // Literal whatever-it-is.
+                        /* Do put it through the translator */
+                        if (ctx->trn != NULL)
                         {
+                            uint32_t result =
+                                ctx->trn->to_serial.translate(
+                                    buf[i], &ctx->trn->to_serial);
+
+                            while (result & TN_CALL_AGAIN)
+                            {
+                                if (!(result & TN_SUPPRESS))
+                                    out_buf[optr++] = result & 0xff;
+                                result = ctx->trn->to_serial.translate(
+                                    '\0', &ctx->trn->to_serial);
+                            }
                             if (!(result & TN_SUPPRESS))
                                 out_buf[optr++] = result & 0xff;
-                            result = ctx->trn->to_serial.translate(
-                                '\0', &ctx->trn->to_serial);
                         }
-                        if (!(result & TN_SUPPRESS))
-                            out_buf[optr++] = result & 0xff;
-                    }
-                    else
-                    {
-                        /* No translator for some reason */
-                        out_buf[optr++] = buf[i];
-                    }
+                        else
+                        {
+                            /* No translator for some reason */
+                            out_buf[optr++] = buf[i];
+                        }
                 }
-                ctx->control_mode = 0;
+                if (ctx->control_mode == 1)
+                    ctx->control_mode = 0;
             } else if (buf[i] == 0x01) { // C-a
                 ctx->control_mode = 1;
             } else if (ctx->trn != NULL) { // Allow CRLF translation
