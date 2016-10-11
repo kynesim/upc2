@@ -15,11 +15,14 @@
 #include <stdint.h>
 #include <termios.h>
 #include "up_bio.h"
-
+#include "up_lineend.h"
 
 typedef struct up_context_struct {
     /** I/O handle for the interface we are using */
     up_bio_t *bio;
+
+    /** Line end translation functions */
+    up_translation_table_t *trn;
 
     /** Current upload file being processed */
     int cur_arg;
@@ -100,7 +103,7 @@ typedef struct up_load_arg_struct {
 
 /** Create a UP context
  */
-int up_create(up_context_t **ctxp);
+int up_create(up_context_t **ctxp, up_translation_table_t *translation);
 
 /** Attach a BIO to an UP context; the context claims the BIO and will
  *  call destroy() on it in due course

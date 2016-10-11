@@ -1,5 +1,5 @@
 /* up.c */
-/* (C) Kynesim Ltd 2012-15 */
+/* (C) Kynesim Ltd 2012-16 */
 
 /** @file
  *
@@ -20,6 +20,7 @@
 
 #include "upc2/up.h"
 #include "upc2/utils.h"
+#include "upc2/up_lineend.h"
 
 #define NAME_MAYBE_NULL(n) (((n) == NULL) ? "(no file name)" : (n))
 
@@ -161,13 +162,14 @@ static void previous_boot(up_context_t  *upc,
 }
 
 
-int up_create(up_context_t **ctxp) {
+int up_create(up_context_t **ctxp, up_translation_table_t * translation) {
     up_context_t *ctx = NULL;
     int rv = 0;
 
     ctx = (up_context_t *)malloc(sizeof(up_context_t));
     memset(ctx, '\0', sizeof(up_context_t));
     ctx->logfd = ctx->ttyfd = -1;
+    ctx->trn = translation;
     (*ctxp) = ctx;
     if (rv < 0) {
         up_dispose(ctxp);
@@ -244,9 +246,20 @@ int up_operate_console(up_context_t  *ctx,
     /* Read from serial, copy to output and (potentially) log */
     rv = ctx->bio->read( ctx->bio, buf, 32 );
     if (rv > 0) {
-        utils_safe_write(ctx->ttyfd, buf, rv);
-        if (ctx->logfd >= 0) {
-            utils_safe_write(ctx->logfd, buf, rv);
+        uint8_t *out_buf = buf;
+
+        if (ctx->console_mode && ctx->trn != NULL) {
+            /* We only ever read up to 32 bytes at a time,
+             * so reuse some of our nice big buffer.
+             */
+            out_buf = buf + 128;
+            rv = translate_buffer(out_buf, buf, rv, &ctx->trn->from_serial);
+        }
+        if (rv) {
+            utils_safe_write(ctx->ttyfd, out_buf, rv);
+            if (ctx->logfd >= 0) {
+                utils_safe_write(ctx->logfd, out_buf, rv);
+            }
         }
     }
 
@@ -293,6 +306,7 @@ int up_operate_console(up_context_t  *ctx,
     rv = read(ctx->ttyfd, buf, 32);
     if (rv > 0) {
         int i, optr = 0;
+        uint8_t *out_buf = buf + 128; /* Again, use upper buffer space */
 
         for (i = 0; i < rv; ++i) {
             if (ctx->control_mode) {
@@ -337,17 +351,53 @@ int up_operate_console(up_context_t  *ctx,
                         break;
                 default:
                     // Literal whatever-it-is.
-                    buf[optr++] = buf[i];
+                    /* Do put it through the translator */
+                    if (ctx->trn != NULL)
+                    {
+                        uint32_t result =
+                            ctx->trn->to_serial.translate(
+                                buf[i], &ctx->trn->to_serial);
+
+                        while (result & TN_CALL_AGAIN)
+                        {
+                            if (!(result & TN_SUPPRESS))
+                                out_buf[optr++] = result & 0xff;
+                            result = ctx->trn->to_serial.translate(
+                                '\0', &ctx->trn->to_serial);
+                        }
+                        if (!(result & TN_SUPPRESS))
+                            out_buf[optr++] = result & 0xff;
+                    }
+                    else
+                    {
+                        /* No translator for some reason */
+                        out_buf[optr++] = buf[i];
+                    }
                 }
                 ctx->control_mode = 0;
             } else if (buf[i] == 0x01) { // C-a
                 ctx->control_mode = 1;
+            } else if (ctx->trn != NULL) { // Allow CRLF translation
+                uint32_t result =
+                    ctx->trn->to_serial.translate(
+                        buf[i], &ctx->trn->to_serial);
+
+                while (result & TN_CALL_AGAIN)
+                {
+                    if (!(result & TN_SUPPRESS))
+                        out_buf[optr++] = result & 0xff;
+                    result = ctx->trn->to_serial.translate(
+                        buf[i], &ctx->trn->to_serial);
+                }
+                if (!(result & TN_SUPPRESS))
+                    out_buf[optr++] = result & 0xff;
             } else {
-                buf[optr++] = buf[i];
+                out_buf[optr++] = buf[i];
             }
         }
         /** @todo Don't echo while downloads are ongoing? */
-        ctx->bio->write(ctx->bio, buf, optr);
+        if (optr > 0)
+            ctx->bio->write(ctx->bio, out_buf, optr);
     } else if (rv == 0) {
         utils_safe_printf(ctx, "! upc2: Input closed.\n");
         ret = -1;

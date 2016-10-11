@@ -24,6 +24,7 @@
 
 #include "upc2/up.h"
 #include "upc2/up_bio_serial.h"
+#include "upc2/up_lineend.h"
 #include "upc2/grouch.h"
 #include "upc2/xmodem.h"
 #include "upc2/utils.h"
@@ -75,6 +76,7 @@ struct option options[] = {
     { "protocol", required_argument, NULL, 'p' },
     { "defer",    no_argument,       NULL, 'd' },
     { "script",   required_argument, NULL, 'x' },
+    { "lineend",  required_argument, NULL, 'n' },
     { "help",     no_argument,       NULL, 'h' },
     { NULL, 0, NULL, 0 }
 };
@@ -96,6 +98,7 @@ int main(int argn, char *args[]) {
     const char *serial_port = "/dev/ttyUSB0";
     int option;
     up_parse_protocol_t *selected_protocol;
+    up_translation_table_t *translations = parse_line_end("none");
 
     memset(&up_args, '\0', sizeof(up_args));
     up_args[0].fd = -1;
@@ -114,7 +117,7 @@ int main(int argn, char *args[]) {
     while (cur_script >= 0)
     {
         while ((option = getopt_long(argn, args,
-                                     "l:s:b:g:p:hd",
+                                     "l:s:b:g:p:n:hd",
                                      options, NULL)) != -1)
         {
             switch (option)
@@ -221,6 +224,16 @@ int main(int argn, char *args[]) {
                     optind = 1;
                     break;
 
+                case 'n':
+                    /* Line endings */
+                    if ((translations = parse_line_end(optarg)) == NULL)
+                    {
+                        fprintf(stderr, "Unrecognised line-ending '%s'\n",
+                                optarg);
+                        return 9;
+                    }
+                    break;
+
                 default:
                     /* Includes "--help" */
                     usage();
@@ -305,7 +318,7 @@ int main(int argn, char *args[]) {
         }
     }
 
-    rv = up_create(&upc);
+    rv = up_create(&upc, translations);
     if (rv < 0)
     {
         fprintf(stderr, "Cannot create upc context\n");
@@ -360,12 +373,19 @@ end:
 static void usage(void)
 {
     printf("Syntax: upc2 [--serial /dev/ttyUSBX] [--log file]\n"
+           "\t\t[--lineend line-ending]\n"
            "\t\t[--grouch filename [--protocol proto] [--baud baud]]*\n"
            "\t\t[--script filename]*\n"
            "\t\t[<baud>]\n"
            "\n"
            "\t--serial <device> \tUse the given serial device.\n"
            "\t--log <file> \t\tAppend all console input to this file.\n"
+           "\t--lineend <line-end> \tTranslate line endings in console.\n"
+           "\t\t<line-end> can be 'none' or a string made up of the line\n"
+           "\t\tend sequence expected on the host, the character '2', and\n"
+           "\t\tline end sequence expected on the target.  For example,\n"
+           "\t\t'crlf2lf' translates the host '\\r\\n' sequence to '\\n'\n"
+           "\t\ton the target, and vice versa.\n"
            "\t--grouch <filename> \tUpload the given file.\n"
            "\t--baud <rate> \t\tChange baud rate.\n"
            "\t--defer \t\t Defer this boot stage until invoked by eg. C-a n \n"
@@ -374,7 +394,7 @@ static void usage(void)
            "\t\tgrouch \t(default)\n"
            "\t\txmodem\n"
            "\t\txmodem128 - this is like xmodem but forces the block size \n"
-           "                to 128, as required by Telegesis Zigbee modules\n"
+           "\t\t\tto 128, as required by Telegesis Zigbee modules\n"
            "\n"
            "You may specify '1m' as your baud rate for 1Mbaud.\n"
            "The final <baud>, if specified, is the baud rate to switch"
