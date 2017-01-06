@@ -72,6 +72,7 @@ struct option options[] = {
     { "log",      required_argument, NULL, 'l' },
     { "serial",   required_argument, NULL, 's' },
     { "baud",     required_argument, NULL, 'b' },
+    { "fc",       required_argument, NULL, 'f' },
     { "grouch",   required_argument, NULL, 'g' },
     { "protocol", required_argument, NULL, 'p' },
     { "defer",    no_argument,       NULL, 'd' },
@@ -96,6 +97,7 @@ int main(int argn, char *args[]) {
     int cur_arg = -1;
     int cur_script = 0;
     const char *serial_port = "/dev/ttyUSB0";
+    int fc = UP_FLOW_CONTROL_RTSCTS;
     int option;
     up_parse_protocol_t *selected_protocol;
     up_translation_table_t *translations = parse_line_end("none");
@@ -233,6 +235,20 @@ int main(int argn, char *args[]) {
                         return 9;
                     }
                     break;
+                    
+
+            case 'f':
+                if (strstr(optarg, "rts") || strstr(optarg, "cts")) {
+                    fc = UP_FLOW_CONTROL_RTSCTS;
+                } else if (!strcmp(optarg, "none")) {
+                    fc = UP_FLOW_CONTROL_NONE;
+                } else {
+                    fprintf(stderr, "Unrecognised flow control spec '%s'\n", 
+                            optarg);
+                    return 3;
+                }
+                break;
+                    
 
                 default:
                     /* Includes "--help" */
@@ -268,6 +284,7 @@ int main(int argn, char *args[]) {
     up_args[cur_arg].fd = -1;
     up_args[cur_arg].baud = baud;
     up_args[cur_arg].protocol = &dummy_protocol;
+    up_args[cur_arg].fc = fc;
 
 
     /* Now open all the files and do the protocol preparation */
@@ -338,8 +355,8 @@ int main(int argn, char *args[]) {
         goto end;
     }
 
-    printf("Starting console at %d baud with %d arguments...\n",
-           baud, cur_arg);
+    printf("Starting console at %d baud, flow control %s with %d arguments...\n",
+           baud, utils_decode_flow_control( fc ) , cur_arg);
     fflush(stdout);
 
     up_set_log_fd(upc, log_fd);
@@ -388,6 +405,7 @@ static void usage(void)
            "\t\ton the target, and vice versa.\n"
            "\t--grouch <filename> \tUpload the given file.\n"
            "\t--baud <rate> \t\tChange baud rate.\n"
+           "\t--fc   <none|rtscts>\tSet flow control.\n"
            "\t--defer \t\t Defer this boot stage until invoked by eg. C-a n \n"
            "\t--protocol <proto> \tChange protocol for upload.  \n"
            "Valid protocols:\n"

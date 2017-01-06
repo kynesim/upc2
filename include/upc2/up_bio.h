@@ -24,7 +24,7 @@ typedef struct up_bio_struct {
                       int                   nr);
 
     /** set baud rate */
-    int (*set_baud)(struct up_bio_struct *bio, int baud);
+    int (*set_baud)(struct up_bio_struct *bio, int baud, int flow_control);
 
     /** Dispose of this BIO, closing resources and releasing the BIO
      *  if dynamically allocated

@@ -86,11 +86,12 @@ static void list_boot_stages(up_context_t  *upc,
     utils_safe_printf(upc, "\n");
     for (i = 0; i < nr_args; i++)
     {
-        utils_safe_printf(upc, "[[ %c Boot stage %d: %s %s @ %d ]]\n",
+        utils_safe_printf(upc, "[[ %c Boot stage %d: %s %s @ %d fc %s ]]\n",
                           (i == upc->cur_arg) ? '*' : ' ',
                           i, args[i].protocol->name,
                           NAME_MAYBE_NULL(args[i].file_name),
-                          args[i].baud);
+                          args[i].baud,
+                          utils_decode_flow_control( args[i].fc ));
     }
 }
 
@@ -118,11 +119,12 @@ static void select_boot(up_context_t  *upc,
         return;
     if (upc->cur_arg == selection)
     {
-        utils_safe_printf(upc, "[[ Boot stage %d: %s %s @ %d ]]\n",
+        utils_safe_printf(upc, "[[ Boot stage %d: %s %s @ %d fc %s ]]\n",
                           selection,
                           args[selection].protocol->name,
                           NAME_MAYBE_NULL(args[selection].file_name),
-                          args[selection].baud);
+                          args[selection].baud,
+                          utils_decode_flow_control(args[selection].fc) );
         return;
     }
 
@@ -133,11 +135,12 @@ static void select_boot(up_context_t  *upc,
             upc, &args[upc->cur_arg]);
 
     upc->cur_arg = selection;
-    utils_safe_printf(upc, "[[ Boot stage %d: %s %s @ %d ]]\n",
+    utils_safe_printf(upc, "[[ Boot stage %d: %s %s @ %d / %s ]]\n",
                       selection,
                       args[selection].protocol->name,
                       NAME_MAYBE_NULL(args[selection].file_name),
-                      args[selection].baud);
+                      args[selection].baud,
+                      utils_decode_flow_control(args[selection].fc));
 
     /* Prepare stage selection */
     if (args[selection].protocol->prepare != NULL)
@@ -288,11 +291,12 @@ int up_operate_console(up_context_t  *ctx,
                 cur_arg->protocol->complete(cur_arg->protocol_handle,
                                             ctx, cur_arg);
             cur_arg = &args[++ctx->cur_arg];
-            utils_safe_printf(ctx, "[[ Boot stage %d: %s %s @ %d ]]\n",
+            utils_safe_printf(ctx, "[[ Boot stage %d: %s %s @ %d fc %s ]]\n",
                               ctx->cur_arg,
                               cur_arg->protocol->name,
                               NAME_MAYBE_NULL(cur_arg->file_name),
-                              cur_arg->baud);
+                              cur_arg->baud,
+                              utils_decode_flow_control(cur_arg->fc));
             ctx->console_mode = (ctx->cur_arg >= nr_args ||
                                  cur_arg->fd < 0 ||
                                  cur_arg->deferred);
@@ -465,10 +469,11 @@ int up_become_console(up_context_t *ctx, up_load_arg_t *args, int nr_args) {
     /* Prep the first protocol handler */
     if (args[0].protocol->prepare != NULL)
         args[0].protocol->prepare(args[0].protocol_handle, ctx, &args[0]);
-    utils_safe_printf(ctx, "[[ Boot stage 0: %s %s @ %d ]]\n",
+    utils_safe_printf(ctx, "[[ Boot stage 0: %s %s @ %d fc %s ]]\n",
                       args[0].protocol->name,
                       NAME_MAYBE_NULL(args[0].file_name),
-                      args[0].baud);
+                      args[0].baud,
+                      utils_decode_flow_control(args[0].fc));
     ctx->console_mode = (args[0].fd < 0 || args[0].deferred);
     do {
         rv = up_operate_console(ctx, args, nr_args);

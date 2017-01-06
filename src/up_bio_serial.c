@@ -50,17 +50,33 @@ static int up_bio_serial_write(up_bio_t      *bio,
     return write(handle->serial_fd, bytes, nr);
 }
 
-static int up_bio_serial_set_baud(up_bio_t *bio, int baud) {
+static int up_bio_serial_set_baud(up_bio_t *bio, int baud, int flow_control) {
     SERIAL_HANDLE(handle, bio);
 
-    if (baud)
+    if (baud || handle->last_flow_control != flow_control)
     {
         struct termios tios;
 
-        printf("[[ Changing baud rate to %d ]]\n", baud);
+        printf("[[ Changing baud rate to %d / %s ]]\n", baud,
+               utils_decode_flow_control(flow_control) );
         sleep(1); /* Allow drainage */
 
         tcgetattr(handle->serial_fd, &tios);
+        switch (flow_control) { 
+        case UP_FLOW_CONTROL_NONE:
+            tios.c_cflag &= ~(CRTSCTS);
+            tios.c_iflag &= ~(IXON);
+            break;
+        case UP_FLOW_CONTROL_RTSCTS:
+            tios.c_cflag |= (CRTSCTS);
+            tios.c_iflag &= ~(IXON);
+            break;
+        default:
+            /* Do nothing */
+            break;
+        }
+
+        handle->last_flow_control = flow_control;
         cfsetspeed(&tios, baud);
         tcsetattr(handle->serial_fd, TCSADRAIN, &tios);
     }
@@ -115,6 +131,7 @@ up_bio_t *up_bio_serial_create(const char *port) {
     s.c_cflag |= CLOCAL | CREAD;
     s.c_cflag &= ~(CRTSCTS);
     s.c_iflag &= ~(IXON);
+    handle->last_flow_control = UP_FLOW_CONTROL_NONE;
     tcsetattr(handle->serial_fd, TCSANOW, &s);
     return a_bio;
 fail:

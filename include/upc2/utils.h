@@ -31,6 +31,9 @@ int utils_safe_printf(up_context_t *ctx, const char *str, ...);
 /* set_baud as a protocol "prepare" entry point */
 int utils_protocol_set_baud(void *h, up_context_t *ctx, up_load_arg_t *arg);
 
+/* Decode handshake to a constant string */
+const char *utils_decode_flow_control(int fc);
+
 #endif
 
 /* End file */

@@ -83,6 +83,10 @@ typedef struct up_protocol_struct {
 } up_protocol_t;
 
 
+
+#define UP_FLOW_CONTROL_NONE   (0)
+#define UP_FLOW_CONTROL_RTSCTS  (1)
+
 typedef struct up_load_arg_struct {
     /** Name to upload */
     const char *file_name;
@@ -98,6 +102,9 @@ typedef struct up_load_arg_struct {
 
     /** Baud rate */
     int baud;
+
+    /** Flow control */
+    int fc;
 
     /** Defer upload for user intervention */
     int deferred;

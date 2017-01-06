@@ -14,6 +14,8 @@ typedef struct up_bio_serial_struct {
 
     struct termios serial_tc;
 
+    int last_flow_control;
+
 } up_bio_serial_t;
 
 /* Allocate and initialise a context structure to access the named

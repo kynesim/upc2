@@ -128,7 +128,16 @@ int utils_safe_printf(up_context_t *ctx, const char *str, ...)
 
 int utils_protocol_set_baud(void *h, up_context_t *ctx, up_load_arg_t *arg)
 {
-    return ctx->bio->set_baud(ctx->bio, arg->baud);
+    return ctx->bio->set_baud(ctx->bio, arg->baud, arg->fc);
+}
+
+const char *utils_decode_flow_control(int fc) { 
+    switch (fc) {
+    case UP_FLOW_CONTROL_NONE: return "none";
+    case UP_FLOW_CONTROL_RTSCTS: return "rtscts";
+    default:
+        return "unknown";
+    }
 }
 
 
