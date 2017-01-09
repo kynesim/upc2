@@ -97,7 +97,7 @@ int main(int argn, char *args[]) {
     int cur_arg = -1;
     int cur_script = 0;
     const char *serial_port = "/dev/ttyUSB0";
-    int fc = UP_FLOW_CONTROL_RTSCTS;
+    int fc = UP_FLOW_CONTROL_NONE;
     int option;
     up_parse_protocol_t *selected_protocol;
     up_translation_table_t *translations = parse_line_end("none");
