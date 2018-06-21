@@ -309,20 +309,16 @@ static int xmodem_go(up_context_t  *ctx,
         send_buffer(ctx, buffer, use_crc16);
 
         /* Wait to see if the 8148 liked it */
-        do
-        {
-            rx_byte = get_byte(ctx);
-            if (rx_byte < 0)
-                return rx_byte;
-        } while (rx_byte != XMODEM_ACK && rx_byte != XMODEM_NAK);
-
+        rx_byte = get_byte(ctx);
+        if (rx_byte < 0)
+            return rx_byte;
 
 #if DEBUG0
         printf("rx_byte = 0x%02x \n", rx_byte);
 #endif
 
-
-        if (rx_byte == XMODEM_NAK)
+        /* Consider anything other than ACK as requiring a resend */
+        if (rx_byte != XMODEM_ACK)
             continue;  /* Resend the same buffer */
 
         if (image_bytes != 0)
