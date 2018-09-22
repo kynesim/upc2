@@ -77,6 +77,7 @@ struct option options[] = {
     { "defer",    no_argument,       NULL, 'd' },
     { "script",   required_argument, NULL, 'x' },
     { "lineend",  required_argument, NULL, 'n' },
+    { "hex",      no_argument,       NULL, 'h' },
     { "help",     no_argument,       NULL, 'h' },
     { NULL, 0, NULL, 0 }
 };
@@ -97,6 +98,7 @@ int main(int argn, char *args[]) {
     int cur_script = 0;
     const char *serial_port = "/dev/ttyUSB0";
     int option;
+    int hex_mode = 0;
     up_parse_protocol_t *selected_protocol;
     up_translation_table_t *translations = parse_line_end("none");
 
@@ -224,6 +226,10 @@ int main(int argn, char *args[]) {
                     optind = 1;
                     break;
 
+            case 'h':
+                hex_mode = 1;
+                break;
+                
                 case 'n':
                     /* Line endings */
                     if ((translations = parse_line_end(optarg)) == NULL)
@@ -325,6 +331,11 @@ int main(int argn, char *args[]) {
         goto end;
     }
 
+    if (hex_mode) {
+        upc->hex_mode = 1;
+    }
+    
+
     /* Open a serial port */
     up_bio_t *bio = up_bio_serial_create(serial_port);
     if (!bio) {
@@ -375,6 +386,7 @@ static void usage(void)
     printf("Syntax: upc2 [--serial /dev/ttyUSBX] [--log file]\n"
            "\t\t[--lineend line-ending]\n"
            "\t\t[--grouch filename [--protocol proto] [--baud baud]]*\n"
+           "\t\t[--hex]\n"
            "\t\t[--script filename]*\n"
            "\t\t[<baud>]\n"
            "\n"
@@ -388,6 +400,7 @@ static void usage(void)
            "\t\ton the target, and vice versa.\n"
            "\t--grouch <filename> \tUpload the given file.\n"
            "\t--baud <rate> \t\tChange baud rate.\n"
+           "\t--hex   \t\t Display output in hex.\n"
            "\t--defer \t\t Defer this boot stage until invoked by eg. C-a n \n"
            "\t--protocol <proto> \tChange protocol for upload.  \n"
            "Valid protocols:\n"

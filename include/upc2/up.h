@@ -24,6 +24,9 @@ typedef struct up_context_struct {
     /** Line end translation functions */
     up_translation_table_t *trn;
 
+    /** Are we in hex mode? */
+    int hex_mode;
+    
     /** Current upload file being processed */
     int cur_arg;
 
