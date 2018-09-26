@@ -37,6 +37,9 @@ static void select_boot(up_context_t  *upc,
                         int            nr_args,
                         int            selection);
 
+static int hex_of(uint8_t *out_buf, const uint8_t *in_buf,
+                  int nr_translate);
+
 static void console_help(up_context_t *upc) {
     utils_safe_printf(upc,
                       "\n"
@@ -229,7 +232,7 @@ int up_start_console(up_context_t *ctx, int tty_fd) {
 int up_operate_console(up_context_t  *ctx,
                        up_load_arg_t *args,
                        int            nr_args) {
-    uint8_t buf[256];
+    uint8_t buf[512];
     int rv;
     int ret = 0;
     struct pollfd fds[2];
@@ -258,13 +261,26 @@ int up_operate_console(up_context_t  *ctx,
     rv = ctx->bio->read( ctx->bio, buf, 32 );
     if (rv > 0) {
         uint8_t *out_buf = buf;
+        uint8_t *x_buf = buf;
 
-        if (ctx->console_mode && ctx->trn != NULL) {
-            /* We only ever read up to 32 bytes at a time,
-             * so reuse some of our nice big buffer.
-             */
-            out_buf = buf + 128;
-            rv = translate_buffer(out_buf, buf, rv, &ctx->trn->from_serial);
+        if (ctx->console_mode) {
+            if (ctx->hex_mode) {
+                /* We only ever read up to 32 bytes at a time,
+                 * so reuse some of our nice big buffer.
+                 */
+                x_buf = out_buf;
+                out_buf = buf+64;
+                rv = hex_of( out_buf, x_buf, rv );
+            }
+            if (ctx->trn != NULL) {
+                /* We only ever read up to 32 bytes at a time,
+                 * so reuse some of our nice big buffer.
+                 */
+                x_buf = out_buf;
+                out_buf = buf+256;
+                rv = translate_buffer(out_buf, x_buf,
+                                      rv, &ctx->trn->from_serial);
+            } 
         }
         if (rv) {
             utils_safe_write(ctx->ttyfd, out_buf, rv);
@@ -520,5 +536,23 @@ int up_read_baud(const char *lne)
     return baud;
 }
 
+static int hex_of(uint8_t *out_buf, const uint8_t *in_buf,
+                  int nr_translate) {
+    char *outp = (char *)out_buf;
+    int nr;
+    
+    for (nr = 0; nr < nr_translate; ++nr) {
+        if ( in_buf[nr] == '\n' ||
+             in_buf[nr] == '\r' ||
+             ( in_buf[nr] >= 0x20 && 
+               in_buf[nr] < 0x7e ) ) {
+            *outp++ = in_buf[nr];
+        } else {
+            outp += sprintf(outp, "[%02x]", in_buf[nr]);
+        }
+    }
+    
+    return outp-((char *)out_buf);
+}
 /* End file */
 
