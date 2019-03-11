@@ -23,7 +23,11 @@
 #include <string.h>
 
 #include "upc2/up.h"
+#ifdef KBUS_DEBUG
+#include "upc2/up_bio_kbus.h"
+#else
 #include "upc2/up_bio_serial.h"
+#endif
 #include "upc2/up_lineend.h"
 #include "upc2/grouch.h"
 #include "upc2/xmodem.h"
@@ -354,7 +358,11 @@ int main(int argn, char *args[]) {
     
 
     /* Open a serial port */
+#ifdef KBUS_DEBUG
+    up_bio_t *bio = up_bio_kbus_create(serial_port);
+#else
     up_bio_t *bio = up_bio_serial_create(serial_port);
+#endif
     if (!bio) {
         fprintf(stderr, "Cannot create serial BIO for %s.\n", serial_port);
         goto end;

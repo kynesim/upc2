@@ -11,6 +11,14 @@ LIBS :=
 COMMON_SRCS := grouch.c xmodem.c up_bio_serial.c up.c utils.c up_lineend.c
 #COMMON_INCLUDES := up_bio.h up_bio_serial.h up.h
 
+ifeq ($(KBUS_DEBUG),)
+COMMON_SRCS += up_bio_serial.c
+else
+COMMON_SRCS += up_bio_kbus.c
+CFLAGS += -DKBUS_DEBUG
+LIBS += -lkbus
+endif
+
 LOCATED_OBJS := $(COMMON_SRCS:%.c=$(OBJDIR)/src/%.o)
 LOCATED_DEPS := $(LOCATED_OBJS:%.o=%.d)
 #LOCATED_INCLUDES := $(COMMON_INCLUDES:%.h=include/%.h)
