@@ -8,7 +8,7 @@ CFLAGS := -Iinclude -Wall -Werror -g
 LDFLAGS :=
 LIBS :=
 
-COMMON_SRCS := grouch.c xmodem.c up_bio_serial.c up.c utils.c up_lineend.c
+COMMON_SRCS := grouch.c xmodem.c up.c utils.c up_lineend.c srec.c kinetis.c
 #COMMON_INCLUDES := up_bio.h up_bio_serial.h up.h
 
 ifeq ($(KBUS_DEBUG),)

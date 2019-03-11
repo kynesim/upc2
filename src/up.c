@@ -283,7 +283,8 @@ int up_operate_console(up_context_t  *ctx,
             } 
         }
         if (rv) {
-            utils_safe_write(ctx->ttyfd, out_buf, rv);
+            if (cur_arg->echo)
+                utils_safe_write(ctx->ttyfd, out_buf, rv);
             if (ctx->logfd >= 0) {
                 utils_safe_write(ctx->logfd, out_buf, rv);
             }

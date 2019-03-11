@@ -111,7 +111,9 @@ typedef struct up_load_arg_struct {
 
     /** Defer upload for user intervention */
     int deferred;
-    
+
+    /** Echo serial traffic to terminal */
+    int echo;
 } up_load_arg_t;
 
 /** Create a UP context
