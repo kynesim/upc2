@@ -113,6 +113,7 @@ int main(int argn, char *args[]) {
     memset(&up_args, '\0', sizeof(up_args));
     up_args[0].fd = -1;
     up_args[0].baud = 115200;
+    up_args[0].echo = 1;
 
     /* We horribly abuse getopt_long() to recurse into script files
      * (which are in fact just command line options in a file).  There
@@ -178,6 +179,7 @@ int main(int argn, char *args[]) {
                      * the underlying buffer before it gets used.
                      */
                     up_args[cur_arg].file_name = strdup(optarg);
+                    up_args[cur_arg].echo = 1;
                     if (up_args[cur_arg].file_name == NULL)
                     {
                         fprintf(stderr, "Out of memory storing filename\n");
