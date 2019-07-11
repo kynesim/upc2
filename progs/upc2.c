@@ -31,7 +31,8 @@
 #include "upc2/up_lineend.h"
 #include "upc2/grouch.h"
 #include "upc2/xmodem.h"
-#include "upc2/kinetis.h"
+#include "upc2/kinetis-srec.h"
+#include "upc2/kinetis-bin.h"
 #include "upc2/utils.h"
 
 #define MAX_ARGS 32
@@ -49,7 +50,8 @@ up_parse_protocol_t protocols[] = {
     { &grouch_protocol, NULL },
     { &xmodem_protocol, NULL },
     { &xmodem128_protocol, NULL },
-    { &kinetis_protocol, NULL },
+    { &kinetis_bin_protocol, NULL },
+    { &kinetis_srec_protocol, NULL },
     { NULL, NULL }
 };
 
@@ -440,9 +442,10 @@ static void usage(void)
            "\t\txmodem128 - this is like xmodem but forces the block size \n"
            "\t\t\tto 128, as required by Telegesis Zigbee modules\n"
            "\t\tkinetis - the Freescale bootloader protocol\n"
+           "\t\tkinetis-s - as kinetis but expecting S-REC input\n"
            "\n"
            "The grouch and xmodem protocols expect a binary file to upload.\n"
-           "The kinetis protocol expects an SREC file.\n"
+           "The kinetis-s protocol expects an SREC file.\n"
            "\n"
            "You may specify '1m' as your baud rate for 1Mbaud.\n"
            "The final <baud>, if specified, is the baud rate to switch"

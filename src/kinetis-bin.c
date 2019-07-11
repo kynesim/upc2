@@ -1,17 +1,21 @@
-/* kinetis.c */
+/* kinetis-bin.c */
 /* Copyright (c) Kynesim Ltd, 2019 */
+
+/* As for kinetis-srec.c, but expecting a .bin file instead of .s19 */
 
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
-#include <ctype.h>
+#include <unistd.h>
+#include <sys/types.h>
 
 #include "upc2/up.h"
-#include "upc2/kinetis.h"
-#include "upc2/srec.h"
+#include "upc2/kinetis-bin.h"
 #include "upc2/utils.h"
+
+#define NAME_MAYBE_NULL(n) (((n) == NULL) ? "(no file name)" : (n))
 
 
 typedef struct kcontext_struct
@@ -20,6 +24,9 @@ typedef struct kcontext_struct
     int pkt_state;
     int count;
     int content_len;
+    off_t file_bytes; /* Number of bytes in the file */
+    int file_nbytes;  /* Number of bytes in file_buffer */
+    uint8_t file_buffer[32];
     uint8_t buffer[256];
 } kcontext_t;
 
@@ -64,7 +71,6 @@ typedef struct kcontext_struct
 #define PKT_READ_HEADER        3
 #define PKT_READ_BODY          4
 
-static srec_t current_srec;
 
 static uint32_t crc_byte(uint32_t crc, uint8_t byte)
 {
@@ -92,6 +98,20 @@ static uint16_t crc_packet(const uint8_t *buffer)
     for (i = 0; i < 4; i++)
         crc = crc_byte(crc, buffer[i]);
     for (i = 6; i < len; i++)
+        crc = crc_byte(crc, buffer[i]);
+
+    return crc & 0xffff;
+}
+
+static uint16_t crc_split_packet(const uint8_t *header, const uint8_t *buffer)
+{
+    uint32_t crc = 0;
+    int len = (header[2] | (header[3] << 8));
+    int i;
+
+    for (i = 0; i < 4; i++)
+        crc = crc_byte(crc, header[i]);
+    for (i = 0; i < len; i++)
         crc = crc_byte(crc, buffer[i]);
 
     return crc & 0xffff;
@@ -187,113 +207,59 @@ static int send_command2(up_bio_t *bio,
 }
 
 
-static int send_srec_data(kcontext_t *kctx, up_bio_t *bio)
+static int send_raw_data(up_bio_t *bio,
+                         const uint8_t *buffer,
+                         uint16_t nbytes)
 {
-    uint8_t buffer[6+32];
+    uint8_t header[6];
     uint16_t crc;
-    uint16_t nbytes = (current_srec.byte_count > 32) ?
-        32 : current_srec.byte_count;
+    int rv;
 
-    buffer[0] = PKT_START;
-    buffer[1] = PKT_TYPE_DATA;
-    buffer[2] = nbytes;
-    buffer[3] = 0x00;
-    /* Defer CRC */
-    memcpy(buffer + 6, current_srec.data, nbytes);
-
-    crc = crc_packet(buffer);
-    buffer[4] = crc & 0xff;
-    buffer[5] = (crc >> 8) & 0xff;
-    return send_packet(bio, buffer, nbytes + 6);
+    if (nbytes > 32)
+        nbytes = 32;
+    header[0] = PKT_START;
+    header[1] = PKT_TYPE_DATA;
+    header[2] = nbytes;
+    header[3] = 0x00;
+    crc = crc_split_packet(header, buffer);
+    header[4] = crc & 0xff;
+    header[5] = (crc >> 8) & 0xff;
+    rv = send_packet(bio, header, 6);
+    if (rv == 0)
+        rv = send_packet(bio, buffer, nbytes);
+    if (rv < 0)
+        return rv;
+    return nbytes;
 }
 
 
-static int process_file(kcontext_t *kctx, up_context_t *upc, up_load_arg_t *arg)
+static int start_write(kcontext_t *kctx,
+                       up_context_t *upc,
+                       up_load_arg_t *arg)
 {
-    int rv;
-    int try_again;
-
-    do
+    kctx->file_bytes = lseek(arg->fd, 0, SEEK_END);
+    if (kctx->file_bytes == (off_t)-1)
     {
-        try_again = 0;
-        rv = read_srec(arg->fd, &current_srec);
-        if (rv != SREC_ERROR_SUCCESS)
-        {
-            fprintf(stderr, "**Error %d reading SREC file\n", rv);
-            if (rv == SREC_ERROR_IO_ERROR)
-                fprintf(stderr, "**  %s\n", strerror(errno));
-            return -1;
-        }
-        if (current_srec.byte_count == 0 && current_srec.type < '4')
-            return 0; /* EOF */
+        fprintf(stderr, "Cannot lseek() %s: %s [%d]\n",
+                NAME_MAYBE_NULL(arg->file_name),
+                strerror(errno),
+                errno);
+        return -1;
+    }
+    lseek(arg->fd, 0, SEEK_SET);
 
-        switch (current_srec.type)
-        {
-            case '0':
-            {
-                /* This is just a header.  Print the bytes */
-                int i;
-
-                fprintf(stderr, "SREC Header: ");
-
-                for (i = 0; i < current_srec.byte_count; i++)
-                {
-                    if (current_srec.data[i] == '\0')
-                        break;
-                    if (isprint(current_srec.data[i]))
-                        fputc(current_srec.data[i], stderr);
-                    else
-                        fputc('.', stderr);
-                }
-                fputc('\n', stderr);
-                try_again = 1;
-                break;
-            }
-
-            case '1':
-            case '2':
-            case '3':
-                /* Check the address is valid (32-bit aligned) */
-                if ((current_srec.address & 3) != 0)
-                {
-                    fprintf(stderr, "**Error: data is not word aligned\n");
-                    return -1;
-                }
-                fputc('.', stderr);
-                if (send_command2(upc->bio,
-                                  CMD_WRITE_MEMORY,
-                                  current_srec.address,
-                                  current_srec.byte_count) < 0)
-                {
-                    fprintf(stderr,
-                            "\n**Error %d sending WRITE command: %s\n",
-                            errno, strerror(errno));
-                    return -1;
-                }
-                kctx->state = STATE_WAIT_FOR_WRITE_ACK;
-                break;
-
-            case '5':
-            case '6':
-                /* Don't really care about the counts */
-                try_again = 1;
-                break;
-
-            default:
-                /* The start addresses are purely decorative: we reset */
-                fprintf(stderr, "\nResetting chip...");
-                if (send_command0(upc->bio, CMD_RESET) < 0)
-                {
-                    fprintf(stderr,
-                            "\n**Error %d sending RESET command: %s\n",
-                            errno, strerror(errno));
-                    return -1;
-                }
-                kctx->state = STATE_WAIT_FOR_RESET_ACK;
-        }
-    } while (try_again);
-
-    return 1;
+    /* Now send the write command */
+    if (send_command2(upc->bio,
+                      CMD_WRITE_MEMORY,
+                      0,
+                      kctx->file_bytes) < 0)
+    {
+        fprintf(stderr,
+                "\n**Error %d sending WRITE command: %s\n",
+                errno, strerror(errno));
+        return -1;
+    }
+    return 0;
 }
 
 
@@ -329,13 +295,9 @@ static int handle_generic_response(kcontext_t *kctx,
                 return -1;
             }
             fprintf(stderr, "Writing...\n");
-            if ((rv = process_file(kctx, upc, arg)) < 0)
+            if ((rv = start_write(kctx, upc, arg)) < 0)
                 return -1;
-            else if (rv == 0)
-            {
-                fprintf(stderr, "Download complete\n");
-                return 1;
-            }
+            kctx->state = STATE_WAIT_FOR_WRITE_ACK;
             break;
 
         case STATE_WAIT_FOR_WRITE_RESP:
@@ -358,13 +320,30 @@ static int handle_generic_response(kcontext_t *kctx,
                         errno, strerror(errno));
                 return -1;
             }
-            if ((rv = send_srec_data(kctx, upc->bio)) < 0)
+            kctx->file_nbytes = (kctx->file_bytes > 32) ?
+                32 : kctx->file_bytes;
+            rv = utils_safe_read(arg->fd,
+                                 kctx->file_buffer,
+                                 kctx->file_nbytes);
+            if (rv < 0)
+            {
+                fprintf(stderr,
+                        "Error reading bin file %s: %s [%d]\n",
+                        NAME_MAYBE_NULL(arg->file_name),
+                        strerror(errno),
+                        errno);
+                return -1;
+            }
+            if (send_raw_data(upc->bio, kctx->file_buffer, rv) < 0)
             {
                 fprintf(stderr,
                         "**Error %d sending data: %s\n",
                         errno, strerror(errno));
                 return -1;
             }
+            /* Stash in case we need to re-send */
+            kctx->file_nbytes = rv;
+            kctx->file_bytes -= rv;
             kctx->state = STATE_WAIT_FOR_DATA_ACK;
             break;
 
@@ -388,13 +367,16 @@ static int handle_generic_response(kcontext_t *kctx,
                         errno, strerror(errno));
                 return -1;
             }
-            if ((rv = process_file(kctx, upc, arg)) < 0)
-                return -1;
-            else if (rv == 0)
+            fprintf(stderr, "Download complete\nResetting chip...");
+            if (send_command0(upc->bio, CMD_RESET) < 0)
             {
-                fprintf(stderr, "Download complete\n");
-                return 1;
+                fprintf(stderr,
+                        "\n**Error %d sending RESET command: %s\n",
+                        errno,
+                        strerror(errno));
+                return -1;
             }
+            kctx->state = STATE_WAIT_FOR_RESET_ACK;
             break;
 
         case STATE_WAIT_FOR_RESET_RESP:
@@ -419,10 +401,8 @@ static int handle_generic_response(kcontext_t *kctx,
             }
             return 1;
 
-        /* More to follow */
-
         default:
-            /* We weren't expecting this */
+            /* We have no idea what this is about */
             break;
     }
 
@@ -430,44 +410,13 @@ static int handle_generic_response(kcontext_t *kctx,
 }
 
 
-static void *init_kinetis(void)
-{
-    return malloc(sizeof(kcontext_t));
-}
-
-
-static int shutdown_kinetis(void *h, up_context_t *ctx)
-{
-    free(h);
-    return 0;
-}
-
-
-static int prepare_kinetis(void *h, up_context_t *upc, up_load_arg_t *arg)
-{
-    int rv;
-    kcontext_t *kctx = (kcontext_t *)h;
-
-    kctx->state = STATE_WAIT_FOR_PING_RESPONSE;
-    kctx->pkt_state = PKT_WAIT_FOR_START;
-    kctx->count = 0;
-    arg->echo = 0;
-
-    /* Initialise h */
-    rv = utils_protocol_set_baud(h, upc, arg);
-    if (rv < 0)
-        return rv;
-    return send_ping(upc->bio);
-}
-
-
 /* Reads the buffer, looking for a Kinetis packet.  Returns -1 if no
  * (complete) packet is found in the buffer, otherwise the index of
  * the last byte of the packet.
  */
-static int read_packet(kcontext_t    *kctx,
+static int read_packet(kcontext_t *kctx,
                        const uint8_t *buf,
-                       int           rv)
+                       int rv)
 {
     int i;
 
@@ -557,6 +506,39 @@ static int read_packet(kcontext_t    *kctx,
 }
 
 
+
+static void *init_kinetis(void)
+{
+    return malloc(sizeof(kcontext_t));
+}
+
+
+static int shutdown_kinetis(void *h, up_context_t *ctx)
+{
+    free(h);
+    return 0;
+}
+
+
+static int prepare_kinetis(void *h, up_context_t *upc, up_load_arg_t *arg)
+{
+    int rv;
+    kcontext_t *kctx = (kcontext_t *)h;
+
+    kctx->state = STATE_WAIT_FOR_PING_RESPONSE;
+    kctx->pkt_state = PKT_WAIT_FOR_START;
+    kctx->count = 0;
+    kctx->file_bytes = 0;
+    arg->echo = 0;
+
+    /* Initialise h */
+    rv = utils_protocol_set_baud(h, upc, arg);
+    if (rv < 0)
+        return rv;
+    return send_ping(upc->bio);
+}
+
+
 static int maybe_kinetis_bootload(void          *h,
                                   up_context_t  *upc,
                                   up_load_arg_t *arg,
@@ -571,7 +553,7 @@ static int maybe_kinetis_bootload(void          *h,
         last = read_packet(kctx, buf, rv);
         if (last == -1)
         {
-            /* Didn't find anything. */
+            /* Didn't find anything */
             /* XXX: resend? */
             return 0;
         }
@@ -582,7 +564,7 @@ static int maybe_kinetis_bootload(void          *h,
         switch (kctx->buffer[1])
         {
             case PKT_TYPE_PING:
-                /* We never expect to get this */
+                /* We never expect to get one of these */
                 fprintf(stderr, "Ping\n");
                 break;
 
@@ -634,30 +616,47 @@ static int maybe_kinetis_bootload(void          *h,
 
                     case STATE_WAIT_FOR_DATA_ACK:
                         /* Are we done, or is there more data? */
-                        if (current_srec.byte_count <= 32)
+                        if (kctx->file_bytes == 0)
                         {
                             /* All done, a response will be coming */
                             kctx->state = STATE_WAIT_FOR_DATA_RESP;
                             break;
                         }
-                        /* Otherwise we shuffle the data up and send
-                         * the next batch.
-                         */
-                        memmove(current_srec.data,
-                                current_srec.data+32,
-                                current_srec.byte_count - 32);
-                        current_srec.byte_count -= 32;
-                        if (send_srec_data(kctx, upc->bio) < 0)
+                        /* Otherwise send some more data */
                         {
-                            fprintf(stderr,
-                                    "**Error %d sending data: %s\n",
-                                    errno, strerror(errno));
-                            return -1;
+                            int rv;
+
+                            kctx->file_nbytes = (kctx->file_bytes > 32) ?
+                                32 : kctx->file_bytes;
+                            rv = utils_safe_read(arg->fd,
+                                                 kctx->file_buffer,
+                                                 kctx->file_nbytes);
+                            if (rv < 0)
+                            {
+                                fprintf(stderr,
+                                        "Error reading bin file %s: %s [%d]\n",
+                                        NAME_MAYBE_NULL(arg->file_name),
+                                        strerror(errno),
+                                        errno);
+                                return -1;
+                            }
+                            if (send_raw_data(upc->bio,
+                                              kctx->file_buffer,
+                                              rv) < 0)
+                            {
+                                fprintf(stderr,
+                                        "**Error %d sending data: %s\n",
+                                        errno, strerror(errno));
+                                return -1;
+                            }
+                            /* Stash in case we need to re-send */
+                            kctx->file_nbytes = rv;
+                            kctx->file_bytes -= rv;
                         }
                         break;
 
                     default:
-                        /* No idea what this refers to */
+                        /* No idea what this is an ACK for */
                         break;
                 }
                 break;
@@ -684,8 +683,8 @@ static int maybe_kinetis_bootload(void          *h,
                         fflush(stderr);
                         if (send_command2(upc->bio,
                                           CMD_WRITE_MEMORY,
-                                          current_srec.address,
-                                          current_srec.byte_count) < 0)
+                                          0,
+                                          kctx->file_nbytes) < 0)
                         {
                             fprintf(stderr,
                                     "**Error %d sending WRITE command: %s\n",
@@ -707,7 +706,9 @@ static int maybe_kinetis_bootload(void          *h,
                         break;
 
                     case STATE_WAIT_FOR_DATA_ACK:
-                        if (send_srec_data(kctx, upc->bio) < 0)
+                        if (send_raw_data(upc->bio,
+                                          kctx->file_buffer,
+                                          kctx->file_nbytes) < 0)
                         {
                             fprintf(stderr,
                                     "**Error %d sending data: %s\n",
@@ -767,7 +768,7 @@ static int maybe_kinetis_bootload(void          *h,
 }
 
 
-const up_protocol_t kinetis_protocol =
+const up_protocol_t kinetis_bin_protocol =
 {
     "kinetis",
     init_kinetis,
@@ -776,3 +777,4 @@ const up_protocol_t kinetis_protocol =
     NULL,
     shutdown_kinetis
 };
+
