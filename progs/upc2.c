@@ -84,10 +84,11 @@ struct option options[] = {
     { "grouch",   required_argument, NULL, 'g' },
     { "protocol", required_argument, NULL, 'p' },
     { "defer",    no_argument,       NULL, 'd' },
+    { "offset",   required_argument, NULL, 'o' },
     { "script",   required_argument, NULL, 'x' },
     { "lineend",  required_argument, NULL, 'n' },
     { "hex",      no_argument,       NULL, 'h' },
-    { "help",     no_argument,       NULL, 'h' },
+    { "help",     no_argument,       NULL, '?' },
     { NULL, 0, NULL, 0 }
 };
 
@@ -116,6 +117,7 @@ int main(int argn, char *args[]) {
     up_args[0].fd = -1;
     up_args[0].baud = 115200;
     up_args[0].echo = 1;
+    up_args[0].offset = 0;
 
     /* We horribly abuse getopt_long() to recurse into script files
      * (which are in fact just command line options in a file).  There
@@ -130,7 +132,7 @@ int main(int argn, char *args[]) {
     while (cur_script >= 0)
     {
         while ((option = getopt_long(argn, args,
-                                     "l:s:b:g:p:n:hd",
+                                     "l:s:b:g:p:n:o:hd",
                                      options, NULL)) != -1)
         {
             switch (option)
@@ -167,6 +169,16 @@ int main(int argn, char *args[]) {
                     up_args[cur_arg].baud = up_read_baud(optarg);
                     break;
 
+                case 'o':
+                    if (cur_arg < 0)
+                    {
+                        fprintf(stderr, "No boot stage for offset %s\n",
+                                optarg);
+                        return 6;
+                    }
+                    up_args[cur_arg].offset = strtoul(optarg, NULL, 0);
+                    break;
+
                 case 'g':
                     if (++cur_arg >= MAX_ARGS)
                     {
@@ -182,6 +194,7 @@ int main(int argn, char *args[]) {
                      */
                     up_args[cur_arg].file_name = strdup(optarg);
                     up_args[cur_arg].echo = 1;
+                    up_args[cur_arg].offset = 0;
                     if (up_args[cur_arg].file_name == NULL)
                     {
                         fprintf(stderr, "Out of memory storing filename\n");
@@ -239,10 +252,10 @@ int main(int argn, char *args[]) {
                     optind = 1;
                     break;
 
-            case 'h':
-                hex_mode = 1;
-                break;
-                
+                case 'h':
+                    hex_mode = 1;
+                    break;
+
                 case 'n':
                     /* Line endings */
                     if ((translations = parse_line_end(optarg)) == NULL)
@@ -252,20 +265,18 @@ int main(int argn, char *args[]) {
                         return 9;
                     }
                     break;
-                    
 
-            case 'f':
-                if (strstr(optarg, "rts") || strstr(optarg, "cts")) {
-                    fc = UP_FLOW_CONTROL_RTSCTS;
-                } else if (!strcmp(optarg, "none")) {
-                    fc = UP_FLOW_CONTROL_NONE;
-                } else {
-                    fprintf(stderr, "Unrecognised flow control spec '%s'\n", 
-                            optarg);
-                    return 3;
-                }
-                break;
-                    
+                case 'f':
+                    if (strstr(optarg, "rts") || strstr(optarg, "cts")) {
+                        fc = UP_FLOW_CONTROL_RTSCTS;
+                    } else if (!strcmp(optarg, "none")) {
+                        fc = UP_FLOW_CONTROL_NONE;
+                    } else {
+                        fprintf(stderr, "Unrecognised flow control spec '%s'\n", 
+                                optarg);
+                        return 3;
+                    }
+                    break;
 
                 default:
                     /* Includes "--help" */
@@ -344,9 +355,10 @@ int main(int argn, char *args[]) {
 
 #if DEBUG0
             printf("arg[%d] = { file_name = %s, fd = %d, protocol = %s,"
-                   " baud = %d }\n",
+                   " baud = %d, offset = 0x%x }\n",
                    i, up_args[i].file_name, up_args[i].fd,
-                   up_args[i].protocol->name, up_args[i].baud);
+                   up_args[i].protocol->name, up_args[i].baud,
+                   up_args[i].offset);
 #endif
 
         }
@@ -435,6 +447,7 @@ static void usage(void)
            "\t--fc   <none|rtscts>\tSet flow control.\n"
            "\t--hex   \t\t Display output in hex.\n"
            "\t--defer \t\t Defer this boot stage until invoked by eg. C-a n \n"
+           "\t--offset <n> \t\t Offset into memory to transfer file\n"
            "\t--protocol <proto> \tChange protocol for upload.  \n"
            "Valid protocols:\n"
            "\t\tgrouch \t(default)\n"
@@ -444,7 +457,7 @@ static void usage(void)
            "\t\tkinetis - the Freescale bootloader protocol\n"
            "\t\tkinetis-s - as kinetis but expecting S-REC input\n"
            "\n"
-           "The grouch and xmodem protocols expect a binary file to upload.\n"
+           "The grouch, kinetis and xmodem protocols expect a binary file to upload.\n"
            "The kinetis-s protocol expects an SREC file.\n"
            "\n"
            "You may specify '1m' as your baud rate for 1Mbaud.\n"

@@ -114,6 +114,9 @@ typedef struct up_load_arg_struct {
 
     /** Echo serial traffic to terminal */
     int echo;
+
+    /** Offset into memory for transfer (for protocols that care) */
+    unsigned int offset;
 } up_load_arg_t;
 
 /** Create a UP context

@@ -89,12 +89,13 @@ static void list_boot_stages(up_context_t  *upc,
     utils_safe_printf(upc, "\n");
     for (i = 0; i < nr_args; i++)
     {
-        utils_safe_printf(upc, "[[ %c Boot stage %d: %s %s @ %d fc %s ]]\n",
+        utils_safe_printf(upc, "[[ %c Boot stage %d: %s %s @ %d fc %s off %#x ]]\n",
                           (i == upc->cur_arg) ? '*' : ' ',
                           i, args[i].protocol->name,
                           NAME_MAYBE_NULL(args[i].file_name),
                           args[i].baud,
-                          utils_decode_flow_control( args[i].fc ));
+                          utils_decode_flow_control( args[i].fc ),
+                          args[i].offset);
     }
 }
 
@@ -122,12 +123,13 @@ static void select_boot(up_context_t  *upc,
         return;
     if (upc->cur_arg == selection)
     {
-        utils_safe_printf(upc, "[[ Boot stage %d: %s %s @ %d fc %s ]]\n",
+        utils_safe_printf(upc, "[[ Boot stage %d: %s %s @ %d fc %s off %#x ]]\n",
                           selection,
                           args[selection].protocol->name,
                           NAME_MAYBE_NULL(args[selection].file_name),
                           args[selection].baud,
-                          utils_decode_flow_control(args[selection].fc) );
+                          utils_decode_flow_control(args[selection].fc),
+                          args[selection].offset);
         return;
     }
 
@@ -138,12 +140,13 @@ static void select_boot(up_context_t  *upc,
             upc, &args[upc->cur_arg]);
 
     upc->cur_arg = selection;
-    utils_safe_printf(upc, "[[ Boot stage %d: %s %s @ %d / %s ]]\n",
+    utils_safe_printf(upc, "[[ Boot stage %d: %s %s @ %d / %s to %#x ]]\n",
                       selection,
                       args[selection].protocol->name,
                       NAME_MAYBE_NULL(args[selection].file_name),
                       args[selection].baud,
-                      utils_decode_flow_control(args[selection].fc));
+                      utils_decode_flow_control(args[selection].fc),
+                      args[selection].offset);
 
     /* Prepare stage selection */
     if (args[selection].protocol->prepare != NULL)

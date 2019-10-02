@@ -251,7 +251,7 @@ static int start_write(kcontext_t *kctx,
     /* Now send the write command */
     if (send_command2(upc->bio,
                       CMD_WRITE_MEMORY,
-                      0,
+                      arg->offset,
                       kctx->file_bytes) < 0)
     {
         fprintf(stderr,
