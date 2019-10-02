@@ -554,7 +554,9 @@ static int maybe_kinetis_bootload(void          *h,
         if (last == -1)
         {
             /* Didn't find anything */
-            /* XXX: resend? */
+            /* Resend the ping */
+            fprintf(stderr, "Resend ping\n");
+            send_ping(upc->bio);
             return 0;
         }
 
