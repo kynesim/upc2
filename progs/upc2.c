@@ -55,11 +55,14 @@ up_parse_protocol_t protocols[] = {
     { NULL, NULL }
 };
 
+/* Forward declaration */
+static int prepare_console(void *h, up_context_t *ctx, up_load_arg_t *arg);
+
 /* Dummy protocol to use for the console arg */
 const up_protocol_t dummy_protocol = {
     "console",
     NULL,
-    utils_protocol_set_baud,
+    prepare_console,
     NULL,
     NULL,
     NULL
@@ -606,4 +609,11 @@ static up_parse_protocol_t *parse_protocol(const char *name)
     }
 
     return NULL;
+}
+
+
+static int prepare_console(void *h, up_context_t *ctx, up_load_arg_t *arg)
+{
+    arg->echo = 1;
+    return utils_protocol_set_baud(h, ctx, arg);
 }
