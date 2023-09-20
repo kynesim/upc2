@@ -54,6 +54,7 @@ static void console_help(up_context_t *upc) {
                       "C-a n                Select next boot stage\n"
                       "C-a p                Select previous boot stage\n"
                       "C-a e <c1> <c2>      Change line endings\n"
+                      "C-a t                Toggle local echo\n"
                       "C-a x                Quit.\n"
                       "C-a C-a              Literal C-a \n"
                       "C-a <anything else>  Spiders?\n"
@@ -176,6 +177,15 @@ static void previous_boot(up_context_t  *upc,
         return;
     }
     select_boot(upc, args, nr_args, upc->cur_arg - 1);
+}
+
+static void toggle_local_echo(int tty_fd)
+{
+    struct termios t;
+
+    tcgetattr(tty_fd, &t);
+    t.c_lflag ^= ECHO;
+    tcsetattr(tty_fd, TCSANOW, &t);
 }
 
 
@@ -385,6 +395,9 @@ int up_operate_console(up_context_t  *ctx,
                         break;
                     case 'e':
                         ctx->control_mode = 2;
+                        break;
+                    case 't':
+                        toggle_local_echo(ctx->ttyfd);
                         break;
                     case '0':
                     case '1':
